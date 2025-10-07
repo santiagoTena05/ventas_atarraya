@@ -1,11 +1,17 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Table } from "lucide-react";
+import { Plus, Table, BarChart3, ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface NavigationProps {
-  currentView: 'form' | 'table';
-  onViewChange: (view: 'form' | 'table') => void;
+  currentView: 'form' | 'table' | 'resumen1' | 'resumen2';
+  onViewChange: (view: 'form' | 'table' | 'resumen1' | 'resumen2') => void;
 }
 
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
@@ -48,6 +54,31 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
               <Table className="h-4 w-4" />
               Ver Ventas
             </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={(currentView === 'resumen1' || currentView === 'resumen2') ? 'default' : 'outline'}
+                  className={`flex items-center gap-2 ${
+                    (currentView === 'resumen1' || currentView === 'resumen2')
+                      ? 'bg-gray-900 text-white'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  Resumen Cuentas
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onViewChange('resumen1')}>
+                  Resumen Cuentas I (por responsable)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewChange('resumen2')}>
+                  Resumen Cuentas II (por tipo de cliente)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
