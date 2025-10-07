@@ -479,7 +479,7 @@ CREATE TABLE ventas (
   
   cliente_id INT REFERENCES clientes(id),
   tipo_cliente_id INT REFERENCES tipos_cliente(id),
-  no_orden_albaraya VARCHAR(50),
+  no_orden_atarraya VARCHAR(50),
   
   producto_id INT REFERENCES productos(id),
   talla_camaron_id INT REFERENCES tallas_camaron(id),

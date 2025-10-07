@@ -78,7 +78,7 @@ Si el proyecto crece:
 Campos principales:
 - Datos administrativos: # Registro, Oficina, Responsable, Región de Mercado
 - Datos de cosecha: Nota Salida Granja, Fecha Cosecha, Fecha Entrega
-- Datos del cliente: Cliente, Tipo de Cliente, No. Orden Albaraya
+- Datos del cliente: Cliente, Tipo de Cliente, No. Orden Atarraya
 - Datos del producto: Tipo de Producto, Talla Camarón, Entero|kgs, Precio Venta, Monto Venta
 - Descuentos: % y mxn
 - Datos de pago: Método de Pago, Forma de Pago (cliente y depósito), Folio Transferencia
@@ -557,7 +557,7 @@ CREATE TABLE ventas (
   -- Datos del cliente
   cliente_id INT REFERENCES clientes(id),
   tipo_cliente_id INT REFERENCES tipos_cliente(id),
-  no_orden_albaraya VARCHAR(50),
+  no_orden_atarraya VARCHAR(50),
   
   -- Datos del producto
   producto_id INT REFERENCES productos(id),
@@ -934,7 +934,7 @@ interface VentaForm {
   // Datos del cliente
   cliente: string;
   tipoCliente: string;
-  noOrdenAlbaraya?: string;
+  noOrdenAtarraya?: string;
   
   // Datos del producto
   tipoProducto: 'Entero' | 'PAD' | 'Larvas';

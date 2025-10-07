@@ -1,0 +1,206 @@
+// Datos dummy de ventas para visualización
+export interface VentaRegistrada {
+  id: number;
+  folio: number;
+  oficina: string;
+  responsable: string;
+  regionMercado: string;
+  notaSalidaGranja?: string;
+  fechaCosecha: string;
+  fechaEntrega: string;
+  cliente: string;
+  tipoCliente: string;
+  noOrdenAtarraya?: string;
+  tipoProducto: string;
+  tallaCamaron?: string;
+  enteroKgs: number;
+  precioVenta: number;
+  montoVenta: number;
+  descuentoPorcentaje: number;
+  descuentoMxn: number;
+  totalOrden: number;
+  metodoPago: string;
+  formaPago: string;
+  estatusPagoCliente: string;
+  estatusDeposito?: string;
+  folioTransferencia?: string;
+  tipoFactura?: string;
+  usoCfdi?: string;
+  estatusFactura?: string;
+  createdAt: string;
+}
+
+export const dummySales: VentaRegistrada[] = [
+  {
+    id: 1,
+    folio: 1,
+    oficina: "ALV Lerma",
+    responsable: "Carlos",
+    regionMercado: "Puerto Escondido",
+    notaSalidaGranja: "NSG-001",
+    fechaCosecha: "2024-01-15",
+    fechaEntrega: "2024-01-16",
+    cliente: "Hotel Escondido",
+    tipoCliente: "Restaurante",
+    noOrdenAtarraya: "AT-2024-001",
+    tipoProducto: "Entero",
+    tallaCamaron: "10-12",
+    enteroKgs: 25.5,
+    precioVenta: 280.00,
+    montoVenta: 7140.00,
+    descuentoPorcentaje: 5,
+    descuentoMxn: 0,
+    totalOrden: 6783.00,
+    metodoPago: "Transferencia",
+    formaPago: "Contado",
+    estatusPagoCliente: "Pagado",
+    estatusDeposito: "Pagado",
+    folioTransferencia: "TRF-001-2024",
+    tipoFactura: "SI",
+    usoCfdi: "G01",
+    estatusFactura: "Enviado",
+    createdAt: "2024-01-16T10:30:00Z",
+  },
+  {
+    id: 2,
+    folio: 2,
+    oficina: "MV Tonameca",
+    responsable: "Manuel F.",
+    regionMercado: "Sureste",
+    notaSalidaGranja: "NSG-002",
+    fechaCosecha: "2024-01-16",
+    fechaEntrega: "2024-01-17",
+    cliente: "Mariscos del Puerto",
+    tipoCliente: "Distribuidor Local",
+    noOrdenAtarraya: "AT-2024-002",
+    tipoProducto: "PAD",
+    tallaCamaron: "12-15",
+    enteroKgs: 15.75,
+    precioVenta: 320.00,
+    montoVenta: 5040.00,
+    descuentoPorcentaje: 0,
+    descuentoMxn: 150.00,
+    totalOrden: 4890.00,
+    metodoPago: "Efectivo",
+    formaPago: "Dos Exhibiciones",
+    estatusPagoCliente: "Pendiente",
+    estatusDeposito: "Pendiente",
+    tipoFactura: "NO",
+    estatusFactura: "Pendiente",
+    createdAt: "2024-01-17T14:15:00Z",
+  },
+  {
+    id: 3,
+    folio: 3,
+    oficina: "MV Apizaco",
+    responsable: "Alex B.",
+    regionMercado: "Pto de granja",
+    notaSalidaGranja: "NSG-003",
+    fechaCosecha: "2024-01-17",
+    fechaEntrega: "2024-01-18",
+    cliente: "Restaurante La Costa",
+    tipoCliente: "Restaurante",
+    noOrdenAtarraya: "AT-2024-003",
+    tipoProducto: "Entero",
+    tallaCamaron: "14-20",
+    enteroKgs: 12.25,
+    precioVenta: 295.00,
+    montoVenta: 3613.75,
+    descuentoPorcentaje: 2.5,
+    descuentoMxn: 0,
+    totalOrden: 3523.41,
+    metodoPago: "Transferencia",
+    formaPago: "Contado",
+    estatusPagoCliente: "Pagado",
+    estatusDeposito: "Pagado",
+    folioTransferencia: "TRF-002-2024",
+    tipoFactura: "SI",
+    usoCfdi: "G02",
+    estatusFactura: "Enviado",
+    createdAt: "2024-01-18T09:45:00Z",
+  },
+  {
+    id: 4,
+    folio: 4,
+    oficina: "ALV Lerma",
+    responsable: "Gil",
+    regionMercado: "Puerto Escondido",
+    notaSalidaGranja: "NSG-004",
+    fechaCosecha: "2024-01-18",
+    fechaEntrega: "2024-01-19",
+    cliente: "Mercado Central",
+    tipoCliente: "Mayorista",
+    noOrdenAtarraya: "AT-2024-004",
+    tipoProducto: "Larvas",
+    enteroKgs: 50.0,
+    precioVenta: 45.00,
+    montoVenta: 2250.00,
+    descuentoPorcentaje: 10,
+    descuentoMxn: 0,
+    totalOrden: 2025.00,
+    metodoPago: "Efectivo",
+    formaPago: "Contado",
+    estatusPagoCliente: "Pagado",
+    estatusDeposito: "Cortesía",
+    tipoFactura: "NO",
+    estatusFactura: "Pendiente",
+    createdAt: "2024-01-19T16:20:00Z",
+  },
+  {
+    id: 5,
+    folio: 5,
+    oficina: "MV Tonameca",
+    responsable: "Daniel S.",
+    regionMercado: "Sureste",
+    notaSalidaGranja: "NSG-005",
+    fechaCosecha: "2024-01-19",
+    fechaEntrega: "2024-01-20",
+    cliente: "Supermercado Omega",
+    tipoCliente: "Retail Boutique",
+    noOrdenAtarraya: "AT-2024-005",
+    tipoProducto: "PAD",
+    tallaCamaron: "21-25",
+    enteroKgs: 8.5,
+    precioVenta: 350.00,
+    montoVenta: 2975.00,
+    descuentoPorcentaje: 0,
+    descuentoMxn: 75.00,
+    totalOrden: 2900.00,
+    metodoPago: "Transferencia",
+    formaPago: "Dos Exhibiciones",
+    estatusPagoCliente: "Pendiente",
+    estatusDeposito: "Pendiente",
+    folioTransferencia: "TRF-003-2024",
+    tipoFactura: "SI",
+    usoCfdi: "G03",
+    estatusFactura: "Pendiente",
+    createdAt: "2024-01-20T11:10:00Z",
+  },
+  {
+    id: 6,
+    folio: 6,
+    oficina: "ALV Lerma",
+    responsable: "Carlos",
+    regionMercado: "Puerto Escondido",
+    notaSalidaGranja: "NSG-006",
+    fechaCosecha: "2024-01-20",
+    fechaEntrega: "2024-01-21",
+    cliente: "Empleado Test",
+    tipoCliente: "Empleado",
+    tipoProducto: "Entero",
+    tallaCamaron: "16-20",
+    enteroKgs: 3.5,
+    precioVenta: 250.00,
+    montoVenta: 875.00,
+    descuentoPorcentaje: 0,
+    descuentoMxn: 0,
+    totalOrden: 875.00,
+    metodoPago: "Cortesía",
+    formaPago: "Cortesía",
+    estatusPagoCliente: "Cortesía",
+    estatusDeposito: "Cortesía",
+    tipoFactura: "NO",
+    estatusFactura: "Pendiente",
+    createdAt: "2024-01-21T13:30:00Z",
+  },
+];
