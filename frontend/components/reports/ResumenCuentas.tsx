@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useSales } from "@/lib/hooks/useSales";
-import { type VentaRegistrada } from "@/lib/dummy-sales";
+import { type VentaRegistrada } from "@/lib/hooks/useSales";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

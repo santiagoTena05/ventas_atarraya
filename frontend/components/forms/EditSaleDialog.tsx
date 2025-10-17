@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ventaSchema, type VentaFormData } from "@/lib/schemas";
 import { mockData } from "@/lib/mock-data";
 import { useSales } from "@/lib/hooks/useSales";
-import { type VentaRegistrada } from "@/lib/dummy-sales";
+import { type VentaRegistrada } from "@/lib/hooks/useSales";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

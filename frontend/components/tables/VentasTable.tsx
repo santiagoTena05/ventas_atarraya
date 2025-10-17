@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { type VentaRegistrada } from "@/lib/dummy-sales";
+import { type VentaRegistrada } from "@/lib/hooks/useSales";
 import { useSales } from "@/lib/hooks/useSales";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
