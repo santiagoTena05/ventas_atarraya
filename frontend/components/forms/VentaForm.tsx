@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ventaSchema, type VentaFormData } from "@/lib/schemas";
@@ -35,12 +35,12 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
   const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isLoadingOficinas, setIsLoadingOficinas] = useState(true);
   const [isAddClientDialogOpen, setIsAddClientDialogOpen] = useState(false);
-  const [selectedCosecha, setSelectedCosecha] = useState<any>(null);
+  const [selectedCosecha, setSelectedCosecha] = useState<unknown>(null);
   const [calculoPrecio, setCalculoPrecio] = useState<CalculoPrecio | null>(null);
   const [isCalculatingPrice, setIsCalculatingPrice] = useState(false);
-  const { addSale, getNextFolio } = salesHook;
+  const { getNextFolio } = salesHook;
   const { cosechas, isLoading: isLoadingCosechas, refreshCosechas } = useCosechas();
-  const { calcularPrecio, isLoading: isLoadingPrecios } = usePrecios();
+  const { calcularPrecio } = usePrecios();
 
   const form = useForm<VentaFormData>({
     resolver: zodResolver(ventaSchema),
