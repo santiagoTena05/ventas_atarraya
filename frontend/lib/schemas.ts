@@ -7,8 +7,7 @@ export const ventaSchema = z.object({
   regionMercado: z.string().min(1, "Región de mercado es requerida"),
 
   // Datos de cosecha
-  notaSalidaGranja: z.string().optional(),
-  fechaCosecha: z.string().min(1, "Fecha de cosecha es requerida"),
+  cosechaId: z.number().min(1, "Debe seleccionar una cosecha"),
   fechaEntrega: z.string().min(1, "Fecha de entrega es requerida"),
 
   // Cliente
@@ -18,11 +17,9 @@ export const ventaSchema = z.object({
 
   // Producto
   tipoProducto: z.string().min(1, "Tipo de producto es requerido"),
-  tallaCamaron: z.string().optional(),
 
-  // Cantidades y precios
+  // Cantidades (precio se calcula automáticamente)
   enteroKgs: z.number().min(0, "Cantidad debe ser mayor a 0"),
-  precioVenta: z.number().min(0, "Precio debe ser mayor a 0"),
 
   // Descuentos
   descuentoPorcentaje: z.number().min(0).max(100).optional(),

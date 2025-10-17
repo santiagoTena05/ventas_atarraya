@@ -1,8 +1,40 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { dummySales, type VentaRegistrada } from "@/lib/dummy-sales";
+// Removed dummy sales import - using real data from Supabase only
+
+export interface VentaRegistrada {
+  id: number;
+  folio: number;
+  oficina: string;
+  responsable: string;
+  regionMercado: string;
+  notaSalidaGranja?: string;
+  fechaCosecha: string;
+  fechaEntrega: string;
+  cliente: string;
+  tipoCliente: string;
+  noOrdenAtarraya?: string;
+  tipoProducto: string;
+  tallaCamaron?: string;
+  enteroKgs: number;
+  precioVenta: number;
+  montoVenta: number;
+  descuentoPorcentaje: number;
+  descuentoMxn: number;
+  totalOrden: number;
+  metodoPago: string;
+  formaPago: string;
+  estatusPagoCliente: string;
+  estatusDeposito?: string;
+  folioTransferencia?: string;
+  tipoFactura?: string;
+  usoCfdi?: string;
+  estatusFactura?: string;
+  createdAt: string;
+}
 import { type VentaFormData } from "@/lib/schemas";
+import { supabase } from "@/lib/supabase";
 
 const STORAGE_KEY = "agua_blanca_sales";
 
@@ -10,24 +42,99 @@ export function useSales() {
   const [sales, setSales] = useState<VentaRegistrada[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Cargar datos al inicializar (localStorage + datos dummy)
+  // Cargar datos al inicializar (Supabase + fallback a localStorage/dummy)
   useEffect(() => {
-    try {
-      const savedSales = localStorage.getItem(STORAGE_KEY);
-      if (savedSales) {
-        const parsedSales = JSON.parse(savedSales);
-        setSales(parsedSales);
-      } else {
-        // Si no hay datos guardados, usar los datos dummy
-        setSales(dummySales);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(dummySales));
+    const loadSales = async () => {
+      try {
+        // Intentar cargar desde Supabase primero
+        const { data, error } = await supabase
+          .from('ventas')
+          .select(`
+            *,
+            clientes(nombre),
+            oficinas(nombre),
+            responsables(nombre),
+            regiones_mercado(nombre),
+            tipos_cliente(nombre),
+            tipos_producto(nombre),
+            tallas_camaron(nombre),
+            metodos_pago(nombre),
+            formas_pago(nombre),
+            estatus_pago!ventas_estatus_pago_cliente_id_fkey(nombre),
+            tipos_factura(nombre),
+            estatus_factura(nombre)
+          `)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          // Transformar datos de Supabase al formato esperado
+          const transformedSales: VentaRegistrada[] = data.map(venta => ({
+            id: venta.id,
+            folio: venta.folio,
+            oficina: venta.oficinas?.nombre || 'Sin oficina',
+            responsable: venta.responsables?.nombre || 'Sin responsable',
+            regionMercado: venta.regiones_mercado?.nombre || 'Sin región',
+            notaSalidaGranja: venta.nota_salida_granja || '',
+            fechaCosecha: venta.fecha_cosecha,
+            fechaEntrega: venta.fecha_entrega,
+            cliente: venta.clientes?.nombre || 'Sin cliente',
+            tipoCliente: venta.tipos_cliente?.nombre || 'Sin tipo',
+            noOrdenAtarraya: venta.no_orden_atarraya || '',
+            tipoProducto: venta.tipos_producto?.nombre || 'Entero',
+            tallaCamaron: venta.tallas_camaron?.nombre || '',
+            enteroKgs: venta.entero_kgs,
+            precioVenta: venta.precio_venta,
+            montoVenta: venta.monto_venta,
+            descuentoPorcentaje: venta.descuento_porcentaje || 0,
+            descuentoMxn: venta.descuento_mxn || 0,
+            totalOrden: venta.total_orden,
+            metodoPago: venta.metodos_pago?.nombre || 'Sin método',
+            formaPago: venta.formas_pago?.nombre || 'Sin forma',
+            estatusPagoCliente: venta.estatus_pago?.nombre || 'Sin estatus',
+            estatusDeposito: 'Sin estatus',
+            folioTransferencia: venta.folio_transferencia || '',
+            tipoFactura: venta.tipos_factura?.nombre || 'Sin tipo',
+            usoCfdi: venta.uso_cfdi || '',
+            estatusFactura: venta.estatus_factura?.nombre || 'Sin estatus',
+            createdAt: venta.created_at,
+          }));
+          setSales(transformedSales);
+          console.log(`Loaded ${transformedSales.length} sales from Supabase`);
+        } else {
+          // Fallback a localStorage si no hay datos en Supabase
+          console.log('No data in Supabase, trying localStorage...');
+          const savedSales = localStorage.getItem(STORAGE_KEY);
+          if (savedSales) {
+            const parsedSales = JSON.parse(savedSales);
+            setSales(parsedSales);
+            console.log(`Loaded ${parsedSales.length} sales from localStorage`);
+          } else {
+            // Sin datos disponibles - lista vacía
+            setSales([]);
+            console.log('No sales data available - showing empty list');
+          }
+        }
+      } catch (error) {
+        console.error("Error loading sales from Supabase:", error);
+        // Fallback a localStorage en caso de error
+        try {
+          const savedSales = localStorage.getItem(STORAGE_KEY);
+          if (savedSales) {
+            const parsedSales = JSON.parse(savedSales);
+            setSales(parsedSales);
+          } else {
+            setSales([]);
+          }
+        } catch (localError) {
+          console.error("Error loading sales from localStorage:", localError);
+          setSales([]);
+        }
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error loading sales from localStorage:", error);
-      setSales(dummySales);
-    } finally {
-      setIsLoading(false);
-    }
+    };
+
+    loadSales();
   }, []);
 
   // Función para agregar una nueva venta
@@ -69,7 +176,7 @@ export function useSales() {
     const updatedSales = [newSale, ...sales]; // Agregar al inicio
     setSales(updatedSales);
 
-    // Guardar en localStorage
+    // Guardar en localStorage como backup
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedSales));
     } catch (error) {
@@ -81,6 +188,7 @@ export function useSales() {
 
   // Función para obtener el siguiente folio
   const getNextFolio = () => {
+    // Obtener desde Supabase si hay ventas, sino usar datos locales
     if (sales.length === 0) return 1;
     const maxFolio = Math.max(...sales.map(sale => sale.folio));
     return maxFolio + 1;
@@ -143,10 +251,74 @@ export function useSales() {
     return sales.find(sale => sale.id === saleId);
   };
 
-  // Función para limpiar todas las ventas (reset a datos dummy)
+  // Función para limpiar todas las ventas (reset a lista vacía)
   const resetSales = () => {
-    setSales(dummySales);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dummySales));
+    setSales([]);
+    localStorage.removeItem(STORAGE_KEY);
+  };
+
+  // Función para refrescar datos desde Supabase
+  const refreshSales = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('ventas')
+        .select(`
+          *,
+          clientes(nombre),
+          oficinas(nombre),
+          responsables(nombre),
+          regiones_mercado(nombre),
+          tipos_cliente(nombre),
+          tipos_producto(nombre),
+          tallas_camaron(nombre),
+          metodos_pago(nombre),
+          formas_pago(nombre),
+          estatus_pago!ventas_estatus_pago_cliente_id_fkey(nombre),
+          tipos_factura(nombre),
+          estatus_factura(nombre)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        const transformedSales: VentaRegistrada[] = data.map(venta => ({
+          id: venta.id,
+          folio: venta.folio,
+          oficina: venta.oficinas?.nombre || 'Sin oficina',
+          responsable: venta.responsables?.nombre || 'Sin responsable',
+          regionMercado: venta.regiones_mercado?.nombre || 'Sin región',
+          notaSalidaGranja: venta.nota_salida_granja || '',
+          fechaCosecha: venta.fecha_cosecha,
+          fechaEntrega: venta.fecha_entrega,
+          cliente: venta.clientes?.nombre || 'Sin cliente',
+          tipoCliente: venta.tipos_cliente?.nombre || 'Sin tipo',
+          noOrdenAtarraya: venta.no_orden_atarraya || '',
+          tipoProducto: venta.tipos_producto?.nombre || 'Entero',
+          tallaCamaron: venta.tallas_camaron?.nombre || '',
+          enteroKgs: venta.entero_kgs,
+          precioVenta: venta.precio_venta,
+          montoVenta: venta.monto_venta,
+          descuentoPorcentaje: venta.descuento_porcentaje || 0,
+          descuentoMxn: venta.descuento_mxn || 0,
+          totalOrden: venta.total_orden,
+          metodoPago: venta.metodos_pago?.nombre || 'Sin método',
+          formaPago: venta.formas_pago?.nombre || 'Sin forma',
+          estatusPagoCliente: venta.estatus_pago?.nombre || 'Sin estatus',
+          estatusDeposito: 'Sin estatus',
+          folioTransferencia: venta.folio_transferencia || '',
+          tipoFactura: venta.tipos_factura?.nombre || 'Sin tipo',
+          usoCfdi: venta.uso_cfdi || '',
+          estatusFactura: venta.estatus_factura?.nombre || 'Sin estatus',
+          createdAt: venta.created_at,
+        }));
+        setSales(transformedSales);
+        console.log(`Refreshed ${transformedSales.length} sales from Supabase`);
+      }
+    } catch (error) {
+      console.error('Error refreshing sales:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return {
@@ -157,5 +329,6 @@ export function useSales() {
     getSaleById,
     getNextFolio,
     resetSales,
+    refreshSales,
   };
 }

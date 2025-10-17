@@ -126,12 +126,33 @@ ventas_atarraya/
 ### Tablas Principales
 - **oficinas**: ALV Lerma, MV Tonameca, etc.
 - **responsables**: Usuarios responsables por oficina
-- **clientes**: Información completa de clientes
+- **clientes**: ⚠️ **REQUERIDA** - Información completa de clientes (nombre, tipo, contacto)
+- **tipos_cliente**: Cliente Final, Distribuidor Local, Empleado, etc.
 - **productos**: Entero, PAD, Larvas
 - **tallas_camaron**: 10-12, 12-15, 14-20, etc.
 - **ventas**: Registro principal de ventas
 - **cosechas**: Registro de cosechas por granja
 - **usuarios**: Gestión de acceso y roles
+- **metodos_pago**: Efectivo, Transferencia, Cortesía
+- **formas_pago**: Contado, Dos Exhibiciones, Pagado, Pendiente
+- **estatus_pago**: Cortesía, Pagado, Pendiente
+- **tipos_factura**: NO, SI, PG
+
+### ⚠️ IMPORTANTE: Tabla de Clientes
+La funcionalidad de autocomplete de clientes implementada requiere una tabla `clientes` en Supabase con la siguiente estructura mínima:
+
+```sql
+CREATE TABLE clientes (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR(255) NOT NULL,
+  tipo_cliente_id BIGINT REFERENCES tipos_cliente(id),
+  telefono VARCHAR(20),
+  email VARCHAR(255),
+  direccion TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
 
 ### Características de Seguridad
 - **Row Level Security (RLS)** habilitado

@@ -219,3 +219,7 @@ storybook-static
 uploads/
 public/uploads/
 storage/
+
+# SQL Scripts - No subir archivos SQL al repositorio
+sql_scripts/
+*.sql

@@ -1,5 +1,18 @@
 // Mock data for form dropdowns based on the image
 export const mockData = {
+  clientes: [
+    { id: 1, name: "Restaurante El Pescador" },
+    { id: 2, name: "Mariscos La Costa" },
+    { id: 3, name: "Distribuidora Marina" },
+    { id: 4, name: "Mercado San Juan" },
+    { id: 5, name: "Hotel Riviera Maya" },
+    { id: 6, name: "Supermercados del Norte" },
+    { id: 7, name: "Casa de Mariscos Pacifico" },
+    { id: 8, name: "Restaurante Agua Salada" },
+    { id: 9, name: "Comercializadora Oceano" },
+    { id: 10, name: "Marisqueria Los Caracoles" },
+  ],
+
   oficinas: [
     { id: 1, name: "ALV Lerma" },
     { id: 2, name: "MV Apizaco" },
