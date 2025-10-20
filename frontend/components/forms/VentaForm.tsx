@@ -32,8 +32,10 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clients, setClients] = useState<{ id: number; name: string }[]>([]);
   const [oficinas, setOficinas] = useState<{ id: number; name: string }[]>([]);
+  const [tiposCliente, setTiposCliente] = useState<{ id: number; name: string }[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isLoadingOficinas, setIsLoadingOficinas] = useState(true);
+  const [isLoadingTiposCliente, setIsLoadingTiposCliente] = useState(true);
   const [isAddClientDialogOpen, setIsAddClientDialogOpen] = useState(false);
   const [selectedCosecha, setSelectedCosecha] = useState<unknown>(null);
   const [calculoPrecio, setCalculoPrecio] = useState<CalculoPrecio | null>(null);
@@ -131,6 +133,42 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
     };
 
     loadOficinas();
+  }, []);
+
+  // Cargar tipos de cliente desde Supabase
+  useEffect(() => {
+    const loadTiposCliente = async () => {
+      try {
+        setIsLoadingTiposCliente(true);
+        console.log('🔄 Cargando tipos de cliente desde Supabase...');
+
+        const { data, error } = await supabase
+          .from('tipos_cliente')
+          .select('id, nombre')
+          .eq('activo', true)
+          .order('nombre');
+
+        if (error) {
+          throw error;
+        }
+
+        const transformedTipos = data?.map(tipo => ({
+          id: tipo.id,
+          name: tipo.nombre,
+        })) || [];
+
+        setTiposCliente(transformedTipos);
+        console.log(`✅ Tipos de cliente cargados exitosamente: ${transformedTipos.length} tipos`);
+      } catch (error) {
+        console.error('❌ Error cargando tipos de cliente:', error);
+        // Fallback a datos vacíos en caso de error
+        setTiposCliente([]);
+      } finally {
+        setIsLoadingTiposCliente(false);
+      }
+    };
+
+    loadTiposCliente();
   }, []);
 
   // Variables movidas abajo donde se usan para el cálculo automático
@@ -284,8 +322,7 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
           tipo_producto_id: tipoProductoId,
           entero_kgs: data.enteroKgs,
           precio_venta: calculoPrecio.precio_unitario,
-          monto_venta: calculoPrecio.monto_bruto,
-          total_orden: calculoPrecio.monto_total,
+          // monto_venta y total_orden se calculan automáticamente en la base de datos
 
           // Descuentos
           descuento_porcentaje: data.descuentoPorcentaje || 0,
@@ -700,11 +737,21 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
                       <SelectValue placeholder="Seleccionar tipo" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockData.tiposCliente.map((tipo) => (
-                        <SelectItem key={tipo.id} value={tipo.name}>
-                          {tipo.name}
+                      {isLoadingTiposCliente ? (
+                        <SelectItem value="loading" disabled>
+                          Cargando tipos de cliente...
                         </SelectItem>
-                      ))}
+                      ) : tiposCliente.length > 0 ? (
+                        tiposCliente.map((tipo) => (
+                          <SelectItem key={tipo.id} value={tipo.name}>
+                            {tipo.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="no-data" disabled>
+                          No hay tipos de cliente disponibles
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                   {errors.tipoCliente && (
