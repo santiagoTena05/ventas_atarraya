@@ -19,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Trash2 } from "lucide-react";
 import { useCosechas } from "@/lib/hooks/useCosechas";
+import { usePedidos, type Pedido } from "@/lib/hooks/usePedidos";
 
 interface CosechaFormProps {
   onCosechaRegistered?: () => void;
@@ -44,9 +45,11 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
   const [responsables, setResponsables] = useState<Responsable[]>([]);
   const [estanques, setEstanques] = useState<Estanque[]>([]);
   const [tallas, setTallas] = useState<Talla[]>([]);
+  const [pedidosDisponibles, setPedidosDisponibles] = useState<Pedido[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
   const { addCosecha, getNextFolio } = useCosechas();
+  const { pedidos } = usePedidos();
 
   const form = useForm<CosechaFormData>({
     resolver: zodResolver(cosechaSchema),
@@ -61,6 +64,14 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
 
   const { register, handleSubmit, watch, setValue, control, getValues, formState: { errors } } = form;
 
+  // Filtrar pedidos disponibles (que no estén completados)
+  useEffect(() => {
+    const pedidosFiltrados = pedidos.filter(pedido =>
+      pedido.estatus === 'Pendiente' || pedido.estatus === 'En Proceso' || pedido.estatus === 'Lista para Entrega'
+    );
+    setPedidosDisponibles(pedidosFiltrados);
+  }, [pedidos]);
+
   // Field array para entradas de cosecha
   const { fields: entradasFields, append: appendEntrada, remove: removeEntrada } = useFieldArray({
     control,
@@ -73,33 +84,35 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
       try {
         setIsLoadingData(true);
 
-        // Cargar responsables
+        // Cargar responsables directamente de la tabla responsables
         const { data: responsablesData } = await supabase
           .from('responsables')
-          .select('id, nombre')
-          .eq('activo', true)
-          .order('nombre');
+          .select('id, nombre');
 
         if (responsablesData) {
           setResponsables(responsablesData);
         }
 
-        // Cargar estanques
+        // Cargar estanques directamente de la tabla estanques
         const { data: estanquesData } = await supabase
           .from('estanques')
-          .select('id, nombre')
-          .eq('activo', true)
-          .order('nombre');
+          .select('id, nombre');
 
-        if (estanquesData) {
+        if (estanquesData && estanquesData.length > 0) {
           setEstanques(estanquesData);
+        } else {
+          // Fallback si no hay estanques en la tabla
+          setEstanques([
+            { id: 1, nombre: 'Estanque 1' },
+            { id: 2, nombre: 'Estanque 2' },
+            { id: 3, nombre: 'Estanque 3' }
+          ]);
         }
 
-        // Cargar tallas
+        // Cargar tallas directamente de la tabla tallas_camaron
         const { data: tallasData } = await supabase
           .from('tallas_camaron')
-          .select('id, nombre')
-          .order('nombre');
+          .select('id, nombre');
 
         if (tallasData) {
           setTallas(tallasData);
@@ -237,6 +250,38 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                     <p className="text-xs text-red-600">{errors.fechaCosecha.message}</p>
                   )}
                 </div>
+              </div>
+
+              {/* Pedido Asociado (Opcional) */}
+              <div className="space-y-2">
+                <Label htmlFor="pedido" className="text-sm font-medium text-gray-700">
+                  Pedido Asociado (Opcional)
+                </Label>
+                <Controller
+                  name="pedidoId"
+                  control={control}
+                  render={({ field }) => (
+                    <Select
+                      value={field.value?.toString() || "0"}
+                      onValueChange={(value) => field.onChange(value === "0" ? undefined : parseInt(value))}
+                    >
+                      <SelectTrigger className="border-gray-300 focus:border-gray-900 focus:ring-gray-900">
+                        <SelectValue placeholder="Seleccionar pedido (opcional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Sin pedido asociado</SelectItem>
+                        {pedidosDisponibles.map((pedido) => (
+                          <SelectItem key={pedido.id} value={pedido.id.toString()}>
+                            #{pedido.id} - {pedido.cliente} | {pedido.producto} {pedido.talla} | {pedido.cantidad_estimada}kg
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <p className="text-xs text-gray-500">
+                  Selecciona un pedido si esta cosecha es para satisfacer una orden específica
+                </p>
               </div>
             </div>
 

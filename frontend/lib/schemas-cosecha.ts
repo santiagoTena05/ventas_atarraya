@@ -19,6 +19,9 @@ export const cosechaSchema = z.object({
   // Entradas de cosecha (estanque + talla + peso)
   entradas: z.array(entradaCosechaSchema).min(1, "Debe incluir al menos una entrada"),
 
+  // Pedido asociado (opcional)
+  pedidoId: z.number().optional(),
+
   // Notas opcionales
   notas: z.string().optional(),
 });
@@ -35,6 +38,13 @@ export interface CosechaRegistrada {
   fechaCosecha: string;
   pesoTotalKg: number;
   estado: 'pendiente' | 'procesada' | 'vendida';
+  pedidoId?: number;
+  pedidoInfo?: {
+    cliente: string;
+    producto: string;
+    talla: string;
+    estatus: string;
+  };
   notas?: string;
   estanques: Array<{
     id: number;

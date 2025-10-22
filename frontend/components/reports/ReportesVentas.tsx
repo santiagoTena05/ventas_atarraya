@@ -2,15 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useSales } from "@/lib/hooks/useSales";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BarChart,
@@ -63,22 +55,22 @@ interface VentasPorUbicacion {
 
 export function ReportesVentas({ salesHook }: ReportesVentasProps) {
   const { sales } = salesHook;
-  const [filtroAno, setFiltroAno] = useState<string>("todas");
-  const [filtroMes, setFiltroMes] = useState<string>("todos");
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date } | null>(null);
 
-  // Filtrar ventas por fecha
+  // Filtrar ventas por rango de fechas
   const ventasFiltradas = useMemo(() => {
+    if (!dateRange) return sales;
+
     return sales.filter(venta => {
       const fechaEntrega = new Date(venta.fechaEntrega);
-      const ano = fechaEntrega.getFullYear().toString();
-      const mes = (fechaEntrega.getMonth() + 1).toString();
-
-      const cumpleAno = filtroAno === "todas" || ano === filtroAno;
-      const cumpleMes = filtroMes === "todos" || mes === filtroMes;
-
-      return cumpleAno && cumpleMes;
+      return fechaEntrega >= dateRange.startDate && fechaEntrega <= dateRange.endDate;
     });
-  }, [sales, filtroAno, filtroMes]);
+  }, [sales, dateRange]);
+
+  // Callback para manejar cambios en el rango de fechas
+  const handleDateRangeChange = (startDate: Date, endDate: Date) => {
+    setDateRange({ startDate, endDate });
+  };
 
   // Ventas por producto (para gráfico de pastel)
   const ventasPorProducto = useMemo(() => {
@@ -233,21 +225,6 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
     return num.toLocaleString('es-MX', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   };
 
-  const anos = [...new Set(sales.map(venta => new Date(venta.fechaEntrega).getFullYear().toString()))].sort();
-  const meses = [
-    { value: "1", label: "ENE" },
-    { value: "2", label: "FEB" },
-    { value: "3", label: "MAR" },
-    { value: "4", label: "ABR" },
-    { value: "5", label: "MAY" },
-    { value: "6", label: "JUN" },
-    { value: "7", label: "JUL" },
-    { value: "8", label: "AGO" },
-    { value: "9", label: "SEP" },
-    { value: "10", label: "OCT" },
-    { value: "11", label: "NOV" },
-    { value: "12", label: "DIC" }
-  ];
 
   const coloresGraficos = ['#1f9a93', '#17a2b8', '#6f42c1', '#e83e8c', '#fd7e14'];
 
@@ -259,50 +236,8 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
         <p className="text-sm text-gray-600">Análisis completo de ventas por productos, oficinas y mercados</p>
       </div>
 
-      {/* Filtros de Fecha */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Fecha Entrega</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-2">
-              <Label htmlFor="ano" className="text-sm font-medium text-gray-700">
-                Año
-              </Label>
-              <Select value={filtroAno} onValueChange={setFiltroAno}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas</SelectItem>
-                  {anos.map(ano => (
-                    <SelectItem key={ano} value={ano}>{ano}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="md:col-span-10 grid grid-cols-6 gap-1">
-              {meses.map(mes => (
-                <Button
-                  key={mes.value}
-                  variant={filtroMes === mes.value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setFiltroMes(filtroMes === mes.value ? "todos" : mes.value)}
-                  className={`text-xs ${
-                    filtroMes === mes.value
-                      ? "bg-teal-600 hover:bg-teal-700 text-white"
-                      : "text-gray-600 hover:bg-gray-50"
-                  }`}
-                >
-                  {mes.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Selector de Rango de Fechas */}
+      <DateRangeSelector onDateRangeChange={handleDateRangeChange} />
 
       {/* Grid principal - Fila superior */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

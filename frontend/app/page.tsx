@@ -5,6 +5,7 @@ import { VentaForm } from "@/components/forms/VentaForm";
 import { VentasTable } from "@/components/tables/VentasTable";
 import { CosechaForm } from "@/components/forms/CosechaForm";
 import { CosechasTable } from "@/components/tables/CosechasTable";
+import { PedidosView } from "@/components/views/PedidosView";
 import { ResumenCuentas } from "@/components/reports/ResumenCuentas";
 import { ResumenCuentas2 } from "@/components/reports/ResumenCuentas2";
 import { CanalVentas } from "@/components/reports/CanalVentas";
@@ -13,12 +14,13 @@ import { EstadosCuenta } from "@/components/reports/EstadosCuenta";
 import { EstadosCuentaMVTabla } from "@/components/reports/EstadosCuentaMVTabla";
 import { EstadosCuentaALVTabla } from "@/components/reports/EstadosCuentaALVTabla";
 import { EstadosCuentaALVResumen } from "@/components/reports/EstadosCuentaALVResumen";
+import { AdminView } from "@/components/admin/AdminView";
 import { Navigation } from "@/components/layout/Navigation";
 import { useSales } from "@/lib/hooks/useSales";
 import { useCosechas } from "@/lib/hooks/useCosechas";
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table'>('form');
+  const [currentView, setCurrentView] = useState<'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'admin'>('form');
   const salesHook = useSales();
   const cosechasHook = useCosechas();
 
@@ -41,6 +43,8 @@ export default function Home() {
           <CosechaForm onCosechaRegistered={() => setCurrentView('cosecha-table')} />
         ) : currentView === 'cosecha-table' ? (
           <CosechasTable cosechasHook={cosechasHook} />
+        ) : currentView === 'pedidos' ? (
+          <PedidosView />
         ) : currentView === 'resumen1' ? (
           <ResumenCuentas salesHook={salesHook} />
         ) : currentView === 'resumen2' ? (
@@ -55,6 +59,8 @@ export default function Home() {
           <EstadosCuentaALVTabla salesHook={salesHook} />
         ) : currentView === 'estados-alv-resumen' ? (
           <EstadosCuentaALVResumen salesHook={salesHook} />
+        ) : currentView === 'admin' ? (
+          <AdminView />
         ) : (
           <ReportesVentas salesHook={salesHook} />
         )}

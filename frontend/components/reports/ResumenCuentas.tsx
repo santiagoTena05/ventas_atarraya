@@ -3,16 +3,8 @@
 import React, { useState, useMemo } from "react";
 import { useSales } from "@/lib/hooks/useSales";
 import { type VentaRegistrada } from "@/lib/hooks/useSales";
+import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 
 interface ResumenCuentasProps {
@@ -51,22 +43,22 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
   const { sales } = salesHook;
   const [expandedResponsables, setExpandedResponsables] = useState<Record<string, boolean>>({});
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({});
-  const [filtroAno, setFiltroAno] = useState<string>("todas");
-  const [filtroMes, setFiltroMes] = useState<string>("todos");
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date } | null>(null);
 
-  // Filtrar ventas por fecha
+  // Filtrar ventas por rango de fechas
   const ventasFiltradas = useMemo(() => {
+    if (!dateRange) return sales;
+
     return sales.filter(venta => {
       const fechaEntrega = new Date(venta.fechaEntrega);
-      const ano = fechaEntrega.getFullYear().toString();
-      const mes = (fechaEntrega.getMonth() + 1).toString();
-
-      const cumpleAno = filtroAno === "todas" || ano === filtroAno;
-      const cumpleMes = filtroMes === "todos" || mes === filtroMes;
-
-      return cumpleAno && cumpleMes;
+      return fechaEntrega >= dateRange.startDate && fechaEntrega <= dateRange.endDate;
     });
-  }, [sales, filtroAno, filtroMes]);
+  }, [sales, dateRange]);
+
+  // Callback para manejar cambios en el rango de fechas
+  const handleDateRangeChange = (startDate: Date, endDate: Date) => {
+    setDateRange({ startDate, endDate });
+  };
 
   // Agrupar datos por responsable, tipo de cliente y cliente individual
   const datosAgrupados = useMemo(() => {
@@ -141,6 +133,58 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
     }), { cortesia: 0, pagado: 0, pendiente: 0, total: 0 });
   }, [datosAgrupados]);
 
+  // Calcular insights de responsables
+  const insights = useMemo(() => {
+    if (datosAgrupados.length === 0) return null;
+
+    // 🏆 Responsable con más ventas totales (por monto)
+    const maxVentas = datosAgrupados.reduce((max, curr) =>
+      curr.totales.total > max.totales.total ? curr : max
+    );
+
+    // 📈 Responsable con más órdenes (por cantidad)
+    const ordenesPorResponsable = ventasFiltradas.reduce((acc, venta) => {
+      acc[venta.responsable] = (acc[venta.responsable] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const maxOrdenes = Object.entries(ordenesPorResponsable).reduce(
+      (max, [nombre, ordenes]) => ordenes > max.ordenes ? { nombre, ordenes } : max,
+      { nombre: '', ordenes: 0 }
+    );
+
+    // 🎯 Responsable más eficiente (mayor % de pagados vs total)
+    const masEficiente = datosAgrupados
+      .filter(resp => resp.totales.total > 0)
+      .reduce((max, curr) => {
+        const eficienciaActual = (curr.totales.pagado / curr.totales.total) * 100;
+        const eficienciaMax = (max.totales.pagado / max.totales.total) * 100;
+        return eficienciaActual > eficienciaMax ? curr : max;
+      });
+
+    // ⚠️ Responsable con más pendientes de pago (monto)
+    const maxPendientes = datosAgrupados.reduce((max, curr) =>
+      curr.totales.pendiente > max.totales.pendiente ? curr : max
+    );
+
+    // 🔴 Responsable con mayor % de pendientes
+    const mayorPorcentajePendientes = datosAgrupados
+      .filter(resp => resp.totales.total > 0)
+      .reduce((max, curr) => {
+        const porcentajeActual = (curr.totales.pendiente / curr.totales.total) * 100;
+        const porcentajeMax = (max.totales.pendiente / max.totales.total) * 100;
+        return porcentajeActual > porcentajeMax ? curr : max;
+      });
+
+    return {
+      maxVentas,
+      maxOrdenes,
+      masEficiente,
+      maxPendientes,
+      mayorPorcentajePendientes
+    };
+  }, [datosAgrupados, ventasFiltradas]);
+
   const toggleResponsable = (responsable: string) => {
     setExpandedResponsables(prev => ({
       ...prev,
@@ -159,21 +203,6 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
     return `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const anos = [...new Set(sales.map(venta => new Date(venta.fechaEntrega).getFullYear().toString()))].sort();
-  const meses = [
-    { value: "1", label: "ENE" },
-    { value: "2", label: "FEB" },
-    { value: "3", label: "MAR" },
-    { value: "4", label: "ABR" },
-    { value: "5", label: "MAY" },
-    { value: "6", label: "JUN" },
-    { value: "7", label: "JUL" },
-    { value: "8", label: "AGO" },
-    { value: "9", label: "SEP" },
-    { value: "10", label: "OCT" },
-    { value: "11", label: "NOV" },
-    { value: "12", label: "DIC" }
-  ];
 
   return (
     <div className="space-y-6 p-6">
@@ -185,44 +214,66 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
 
       {/* Filtros de Fecha */}
       <div className="bg-white rounded-lg border p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Fecha Entrega</h3>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          <div className="md:col-span-2">
-            <Label htmlFor="ano" className="text-sm font-medium text-gray-700">
-              Año
-            </Label>
-            <Select value={filtroAno} onValueChange={setFiltroAno}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas</SelectItem>
-                {anos.map(ano => (
-                  <SelectItem key={ano} value={ano}>{ano}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Periodo de Análisis</h3>
+        <DateRangeSelector onDateRangeChange={handleDateRangeChange} />
+      </div>
 
-          <div className="md:col-span-10 grid grid-cols-6 gap-1">
-            {meses.map(mes => (
-              <Button
-                key={mes.value}
-                variant={filtroMes === mes.value ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFiltroMes(filtroMes === mes.value ? "todos" : mes.value)}
-                className={`text-xs ${
-                  filtroMes === mes.value
-                    ? "bg-teal-600 hover:bg-teal-700 text-white"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {mes.label}
-              </Button>
-            ))}
+      {/* Insights de Responsables */}
+      {insights && (
+        <div className="bg-white rounded-lg border p-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Insights por Responsable</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Responsable con más ventas totales */}
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-yellow-800">Más Ventas</h4>
+              </div>
+              <p className="text-lg font-bold text-yellow-900">{insights.maxVentas.nombre}</p>
+              <p className="text-sm text-yellow-700">{formatCurrency(insights.maxVentas.totales.total)}</p>
+            </div>
+
+            {/* Responsable con más órdenes */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-blue-800">Más Órdenes</h4>
+              </div>
+              <p className="text-lg font-bold text-blue-900">{insights.maxOrdenes.nombre}</p>
+              <p className="text-sm text-blue-700">{insights.maxOrdenes.ordenes} órdenes</p>
+            </div>
+
+            {/* Responsable más eficiente */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-green-800">Más Eficiente</h4>
+              </div>
+              <p className="text-lg font-bold text-green-900">{insights.masEficiente.nombre}</p>
+              <p className="text-sm text-green-700">
+                {((insights.masEficiente.totales.pagado / insights.masEficiente.totales.total) * 100).toFixed(1)}% cobrado
+              </p>
+            </div>
+
+            {/* Responsable con más pendientes de pago */}
+            <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-orange-800">Más Pendientes</h4>
+              </div>
+              <p className="text-lg font-bold text-orange-900">{insights.maxPendientes.nombre}</p>
+              <p className="text-sm text-orange-700">{formatCurrency(insights.maxPendientes.totales.pendiente)}</p>
+            </div>
+
+            {/* Responsable con mayor % de pendientes */}
+            <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-red-800">Mayor % Pendiente</h4>
+              </div>
+              <p className="text-lg font-bold text-red-900">{insights.mayorPorcentajePendientes.nombre}</p>
+              <p className="text-sm text-red-700">
+                {((insights.mayorPorcentajePendientes.totales.pendiente / insights.mayorPorcentajePendientes.totales.total) * 100).toFixed(1)}% pendiente
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Controles de Expansión */}
       <div className="flex gap-2">

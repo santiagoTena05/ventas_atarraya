@@ -38,6 +38,7 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
   const [isLoadingTiposCliente, setIsLoadingTiposCliente] = useState(true);
   const [isAddClientDialogOpen, setIsAddClientDialogOpen] = useState(false);
   const [selectedCosecha, setSelectedCosecha] = useState<unknown>(null);
+  const [selectedTallaId, setSelectedTallaId] = useState<number | null>(null);
   const [calculoPrecio, setCalculoPrecio] = useState<CalculoPrecio | null>(null);
   const [isCalculatingPrice, setIsCalculatingPrice] = useState(false);
   const { getNextFolio } = salesHook;
@@ -196,12 +197,48 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
     }
   };
 
+  // Función para obtener la talla predominante de una cosecha desde cosechas_tallas
+  const obtenerTallaDeCosecha = async (cosechaId: number) => {
+    try {
+      console.log(`🔍 Buscando tallas para cosecha ${cosechaId}...`);
+
+      // Consultar la tabla cosecha_tallas para obtener todas las tallas de esta cosecha
+      const { data: tallas, error } = await supabase
+        .from('cosecha_tallas')
+        .select('talla_camaron_id, peso_talla_kg, porcentaje_talla')
+        .eq('cosecha_id', cosechaId)
+        .order('peso_talla_kg', { ascending: false }); // Ordenar por peso descendente
+
+      if (!error && tallas && tallas.length > 0) {
+        // Tomar la talla con mayor peso
+        const tallaPredominante = tallas[0];
+        setSelectedTallaId(tallaPredominante.talla_camaron_id);
+        console.log(`✅ Talla predominante obtenida de cosecha ${cosechaId}: ID ${tallaPredominante.talla_camaron_id} (${tallaPredominante.peso_talla_kg}kg - ${tallaPredominante.porcentaje_talla}%)`);
+      } else {
+        console.warn(`⚠️ No se encontraron tallas para cosecha ${cosechaId}:`, error);
+        setSelectedTallaId(1); // Default a la primera talla
+      }
+    } catch (error) {
+      console.error('❌ Error obteniendo talla de cosecha:', error);
+      setSelectedTallaId(1); // Default a la primera talla
+    }
+  };
+
   // Watch para recalcular precio automáticamente
   const cosechaId = watch('cosechaId');
   const tipoCliente = watch('tipoCliente');
   const enteroKgs = watch('enteroKgs');
   const descuentoPorcentaje = watch('descuentoPorcentaje');
   const descuentoMxn = watch('descuentoMxn');
+
+  // Efecto para obtener talla cuando cambie la cosecha
+  useEffect(() => {
+    if (cosechaId) {
+      obtenerTallaDeCosecha(cosechaId);
+    } else {
+      setSelectedTallaId(null);
+    }
+  }, [cosechaId]);
 
   useEffect(() => {
     const recalcularPrecio = async () => {
@@ -320,6 +357,7 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
 
           // Datos del producto
           tipo_producto_id: tipoProductoId,
+          talla_camaron_id: selectedTallaId,
           entero_kgs: data.enteroKgs,
           precio_venta: calculoPrecio.precio_unitario,
           // monto_venta y total_orden se calculan automáticamente en la base de datos
@@ -365,6 +403,7 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
         descuentoMxn: 0,
       });
       setSelectedCosecha(null);
+      setSelectedTallaId(null);
       setCalculoPrecio(null);
 
       // Opcional: cambiar a vista de tabla automáticamente

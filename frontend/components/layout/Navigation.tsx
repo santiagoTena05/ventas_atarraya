@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Table, BarChart3, FileText, ChevronDown, Fish } from "lucide-react";
+import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface NavigationProps {
-  currentView: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table';
-  onViewChange: (view: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table') => void;
+  currentView: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'admin';
+  onViewChange: (view: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'admin') => void;
 }
 
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
@@ -79,6 +79,19 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            <Button
+              variant={currentView === 'pedidos' ? 'default' : 'outline'}
+              className={`flex items-center gap-2 ${
+                currentView === 'pedidos'
+                  ? 'bg-gray-900 text-white'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => onViewChange('pedidos')}
+            >
+              <ShoppingCart className="h-4 w-4" />
+              Pedidos
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -140,6 +153,19 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            <Button
+              variant={currentView === 'admin' ? 'default' : 'outline'}
+              className={`flex items-center gap-2 ${
+                currentView === 'admin'
+                  ? 'bg-teal-600 text-white hover:bg-teal-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => onViewChange('admin')}
+            >
+              <Settings className="h-4 w-4" />
+              Admin
+            </Button>
           </div>
         </div>
       </div>

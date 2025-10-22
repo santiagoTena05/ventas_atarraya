@@ -2,15 +2,8 @@
 
 import React, { useState, useMemo } from "react";
 import { useSales } from "@/lib/hooks/useSales";
+import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 
 interface ResumenCuentas2Props {
@@ -47,22 +40,22 @@ export function ResumenCuentas2({ salesHook }: ResumenCuentas2Props) {
   const { sales } = salesHook;
   const [expandedTipos, setExpandedTipos] = useState<Record<string, boolean>>({});
   const [expandedClientes, setExpandedClientes] = useState<Record<string, boolean>>({});
-  const [filtroAno, setFiltroAno] = useState<string>("todas");
-  const [filtroMes, setFiltroMes] = useState<string>("todos");
+  const [dateRange, setDateRange] = useState<{ startDate: Date; endDate: Date } | null>(null);
 
-  // Filtrar ventas por fecha
+  // Filtrar ventas por rango de fechas
   const ventasFiltradas = useMemo(() => {
+    if (!dateRange) return sales;
+
     return sales.filter(venta => {
       const fechaEntrega = new Date(venta.fechaEntrega);
-      const ano = fechaEntrega.getFullYear().toString();
-      const mes = (fechaEntrega.getMonth() + 1).toString();
-
-      const cumpleAno = filtroAno === "todas" || ano === filtroAno;
-      const cumpleMes = filtroMes === "todos" || mes === filtroMes;
-
-      return cumpleAno && cumpleMes;
+      return fechaEntrega >= dateRange.startDate && fechaEntrega <= dateRange.endDate;
     });
-  }, [sales, filtroAno, filtroMes]);
+  }, [sales, dateRange]);
+
+  // Callback para manejar cambios en el rango de fechas
+  const handleDateRangeChange = (startDate: Date, endDate: Date) => {
+    setDateRange({ startDate, endDate });
+  };
 
   // Agrupar datos por tipo de cliente, cliente y responsable
   const datosAgrupados = useMemo(() => {
@@ -140,6 +133,64 @@ export function ResumenCuentas2({ salesHook }: ResumenCuentas2Props) {
     }), { cortesia: 0, pagado: 0, pendiente: 0, total: 0 });
   }, [datosAgrupados]);
 
+  // Calcular insights por tipo de cliente y clientes individuales
+  const insights = useMemo(() => {
+    if (datosAgrupados.length === 0) return null;
+
+    // Cliente con más compras (monto total)
+    let clienteMaxCompras = { nombre: '', total: 0, tipo: '' };
+    datosAgrupados.forEach(tipo => {
+      Object.values(tipo.clientes).forEach(cliente => {
+        if (cliente.total > clienteMaxCompras.total) {
+          clienteMaxCompras = { nombre: cliente.nombre, total: cliente.total, tipo: tipo.tipo };
+        }
+      });
+    });
+
+    // Cliente con más pendientes (monto pendiente)
+    let clienteMaxPendientes = { nombre: '', pendiente: 0, tipo: '' };
+    datosAgrupados.forEach(tipo => {
+      Object.values(tipo.clientes).forEach(cliente => {
+        if (cliente.pendiente > clienteMaxPendientes.pendiente) {
+          clienteMaxPendientes = { nombre: cliente.nombre, pendiente: cliente.pendiente, tipo: tipo.tipo };
+        }
+      });
+    });
+
+    // Tipo de cliente con más ventas totales
+    const tipoMaxVentas = datosAgrupados.reduce((max, curr) =>
+      curr.total > max.total ? curr : max
+    );
+
+    // Tipo con más órdenes (cantidad de transacciones)
+    const ordenesPorTipo = ventasFiltradas.reduce((acc, venta) => {
+      acc[venta.tipoCliente] = (acc[venta.tipoCliente] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const tipoMaxOrdenes = Object.entries(ordenesPorTipo).reduce(
+      (max, [tipo, ordenes]) => ordenes > max.ordenes ? { tipo, ordenes } : max,
+      { tipo: '', ordenes: 0 }
+    );
+
+    // Tipo más rentable (mayor % de pagados vs total)
+    const tipoMasRentable = datosAgrupados
+      .filter(tipo => tipo.total > 0)
+      .reduce((max, curr) => {
+        const rentabilidadActual = (curr.pagado / curr.total) * 100;
+        const rentabilidadMax = (max.pagado / max.total) * 100;
+        return rentabilidadActual > rentabilidadMax ? curr : max;
+      });
+
+    return {
+      clienteMaxCompras,
+      clienteMaxPendientes,
+      tipoMaxVentas,
+      tipoMaxOrdenes,
+      tipoMasRentable
+    };
+  }, [datosAgrupados, ventasFiltradas]);
+
   const toggleTipo = (tipo: string) => {
     setExpandedTipos(prev => ({
       ...prev,
@@ -158,22 +209,6 @@ export function ResumenCuentas2({ salesHook }: ResumenCuentas2Props) {
     return `$${amount.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const anos = [...new Set(sales.map(venta => new Date(venta.fechaEntrega).getFullYear().toString()))].sort();
-  const meses = [
-    { value: "1", label: "ENE" },
-    { value: "2", label: "FEB" },
-    { value: "3", label: "MAR" },
-    { value: "4", label: "ABR" },
-    { value: "5", label: "MAY" },
-    { value: "6", label: "JUN" },
-    { value: "7", label: "JUL" },
-    { value: "8", label: "AGO" },
-    { value: "9", label: "SEP" },
-    { value: "10", label: "OCT" },
-    { value: "11", label: "NOV" },
-    { value: "12", label: "DIC" }
-  ];
-
   return (
     <div className="space-y-6 p-6">
       {/* Encabezado */}
@@ -184,44 +219,66 @@ export function ResumenCuentas2({ salesHook }: ResumenCuentas2Props) {
 
       {/* Filtros de Fecha */}
       <div className="bg-white rounded-lg border p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Fecha Entrega</h3>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          <div className="md:col-span-2">
-            <Label htmlFor="ano" className="text-sm font-medium text-gray-700">
-              Año
-            </Label>
-            <Select value={filtroAno} onValueChange={setFiltroAno}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todas">Todas</SelectItem>
-                {anos.map(ano => (
-                  <SelectItem key={ano} value={ano}>{ano}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Periodo de Análisis</h3>
+        <DateRangeSelector onDateRangeChange={handleDateRangeChange} />
+      </div>
 
-          <div className="md:col-span-10 grid grid-cols-6 gap-1">
-            {meses.map(mes => (
-              <Button
-                key={mes.value}
-                variant={filtroMes === mes.value ? "default" : "outline"}
-                size="sm"
-                onClick={() => setFiltroMes(filtroMes === mes.value ? "todos" : mes.value)}
-                className={`text-xs ${
-                  filtroMes === mes.value
-                    ? "bg-teal-600 hover:bg-teal-700 text-white"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {mes.label}
-              </Button>
-            ))}
+      {/* Insights por Tipo de Cliente */}
+      {insights && (
+        <div className="bg-white rounded-lg border p-4">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Insights por Tipo de Cliente</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Cliente con más compras */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-purple-800">Cliente Top</h4>
+              </div>
+              <p className="text-lg font-bold text-purple-900">{insights.clienteMaxCompras.nombre}</p>
+              <p className="text-sm text-purple-700">{formatCurrency(insights.clienteMaxCompras.total)}</p>
+              <p className="text-xs text-purple-600">{insights.clienteMaxCompras.tipo}</p>
+            </div>
+
+            {/* Cliente con más pendientes */}
+            <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-red-800">Más Pendientes</h4>
+              </div>
+              <p className="text-lg font-bold text-red-900">{insights.clienteMaxPendientes.nombre}</p>
+              <p className="text-sm text-red-700">{formatCurrency(insights.clienteMaxPendientes.pendiente)}</p>
+              <p className="text-xs text-red-600">{insights.clienteMaxPendientes.tipo}</p>
+            </div>
+
+            {/* Tipo de cliente con más ventas totales */}
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-yellow-800">Tipo Top Ventas</h4>
+              </div>
+              <p className="text-lg font-bold text-yellow-900">{insights.tipoMaxVentas.tipo}</p>
+              <p className="text-sm text-yellow-700">{formatCurrency(insights.tipoMaxVentas.total)}</p>
+            </div>
+
+            {/* Tipo con más órdenes */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-blue-800">Más Órdenes</h4>
+              </div>
+              <p className="text-lg font-bold text-blue-900">{insights.tipoMaxOrdenes.tipo}</p>
+              <p className="text-sm text-blue-700">{insights.tipoMaxOrdenes.ordenes} órdenes</p>
+            </div>
+
+            {/* Tipo más rentable */}
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-lg p-4">
+              <div className="flex items-center mb-2">
+                <h4 className="text-sm font-medium text-green-800">Más Rentable</h4>
+              </div>
+              <p className="text-lg font-bold text-green-900">{insights.tipoMasRentable.tipo}</p>
+              <p className="text-sm text-green-700">
+                {((insights.tipoMasRentable.pagado / insights.tipoMasRentable.total) * 100).toFixed(1)}% cobrado
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Controles de Expansión */}
       <div className="flex gap-2">

@@ -196,6 +196,7 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
                     <TableHead className="font-semibold text-gray-900 text-xs text-right">Peso Total</TableHead>
                     <TableHead className="font-semibold text-gray-900 text-xs">Estanques</TableHead>
                     <TableHead className="font-semibold text-gray-900 text-xs">Tallas</TableHead>
+                    <TableHead className="font-semibold text-gray-900 text-xs">Pedido</TableHead>
                     <TableHead className="font-semibold text-gray-900 text-xs text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -244,6 +245,31 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
                             </div>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {cosecha.pedidoInfo ? (
+                          <div className="space-y-1">
+                            <div className="font-medium text-gray-900">
+                              #{cosecha.pedidoId} - {cosecha.pedidoInfo.cliente}
+                            </div>
+                            <div className="text-gray-600">
+                              {cosecha.pedidoInfo.producto} {cosecha.pedidoInfo.talla}
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={
+                                cosecha.pedidoInfo.estatus === "Pendiente" ? "border-yellow-300 text-yellow-700" :
+                                cosecha.pedidoInfo.estatus === "En Proceso" ? "border-blue-300 text-blue-700" :
+                                cosecha.pedidoInfo.estatus === "Lista para Entrega" ? "border-green-300 text-green-700" :
+                                "border-gray-300 text-gray-700"
+                              }
+                            >
+                              {cosecha.pedidoInfo.estatus}
+                            </Badge>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <Button
