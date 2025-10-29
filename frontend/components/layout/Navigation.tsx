@@ -21,7 +21,7 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">
-              Agua Blanca Seafoods
+              Agua Blanca Seafood
             </h1>
             <p className="text-sm text-gray-600">
               Sistema de Gestión de Ventas y Cosechas
@@ -123,36 +123,39 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant={(currentView === 'estados-cuenta' || currentView === 'estados-mv-tabla' || currentView === 'estados-alv-tabla' || currentView === 'estados-alv-resumen') ? 'default' : 'outline'}
-                  className={`flex items-center gap-2 ${
-                    (currentView === 'estados-cuenta' || currentView === 'estados-mv-tabla' || currentView === 'estados-alv-tabla' || currentView === 'estados-alv-resumen')
-                      ? 'bg-gray-900 text-white'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <FileText className="h-4 w-4" />
-                  Estados de Cuenta
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onViewChange('estados-mv-tabla')}>
-                  Estados MV - Formato Tabla
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('estados-cuenta')}>
-                  Estados MV - Formato Resumen
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('estados-alv-tabla')}>
-                  Estados ALV - Formato Tabla
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('estados-alv-resumen')}>
-                  Estados ALV - Formato Resumen
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* TEMPORALMENTE OCULTO - Estados de Cuenta */}
+            {false && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant={(currentView === 'estados-cuenta' || currentView === 'estados-mv-tabla' || currentView === 'estados-alv-tabla' || currentView === 'estados-alv-resumen') ? 'default' : 'outline'}
+                    className={`flex items-center gap-2 ${
+                      (currentView === 'estados-cuenta' || currentView === 'estados-mv-tabla' || currentView === 'estados-alv-tabla' || currentView === 'estados-alv-resumen')
+                        ? 'bg-gray-900 text-white'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <FileText className="h-4 w-4" />
+                    Estados de Cuenta
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onViewChange('estados-mv-tabla')}>
+                    Estados MV - Formato Tabla
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onViewChange('estados-cuenta')}>
+                    Estados MV - Formato Resumen
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onViewChange('estados-alv-tabla')}>
+                    Estados ALV - Formato Tabla
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onViewChange('estados-alv-resumen')}>
+                    Estados ALV - Formato Resumen
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             <Button
               variant={currentView === 'admin' ? 'default' : 'outline'}

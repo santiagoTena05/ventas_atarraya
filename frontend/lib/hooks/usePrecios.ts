@@ -37,13 +37,24 @@ export function usePrecios() {
     const loadPrecios = async () => {
       try {
         const { data, error } = await supabase
-          .from('precios_camaron_detalle')
-          .select('*')
+          .from('precios_camaron')
+          .select(`
+            *,
+            tallas_camaron!inner(
+              id,
+              nombre
+            )
+          `)
           .order('peso_min_gramos');
 
         if (!error && data) {
-          setPrecios(data);
-          console.log(`✅ Precios cargados: ${data.length} registros`);
+          const preciosTransformados = data.map(precio => ({
+            ...precio,
+            talla_nombre: precio.tallas_camaron?.nombre || 'Sin nombre'
+          }));
+          setPrecios(preciosTransformados);
+          console.log(`✅ Precios cargados: ${preciosTransformados.length} registros`);
+          console.log('🔍 Estructura de precios:', preciosTransformados[0]);
         } else {
           console.error('❌ Error cargando precios:', error);
           setPrecios([]);
@@ -198,10 +209,91 @@ export function usePrecios() {
     }
   };
 
+  // Función específica para calcular precio en ventas inmediatas (usando tallaId directamente)
+  const calcularPrecioInmediato = useCallback(async (
+    tallaId: number,
+    tipoCliente: string,
+    cantidadKg: number,
+    descuentoPorcentaje: number = 0,
+    descuentoMxn: number = 0
+  ): Promise<CalculoPrecio | null> => {
+    try {
+      console.log('💰 Calculando precio inmediato con talla ID:', tallaId, 'tipo:', tipoCliente, 'cantidad:', cantidadKg);
+
+      // 1. Buscar precio en los datos locales usando tallaId
+      console.log('🔍 Precios disponibles:', precios.map(p => ({ id: p.id, talla_camaron_id: p.talla_camaron_id, nombre: p.talla_nombre })));
+      console.log('🎯 Buscando precio para talla ID:', tallaId);
+
+      const precioData = precios.find(p => p.talla_camaron_id === tallaId);
+      if (!precioData) {
+        console.error('❌ No se encontró precio para talla ID:', tallaId);
+        console.log('📋 Precios disponibles completos:', precios);
+        return null;
+      }
+
+      console.log('✅ Precio encontrado para talla:', precioData.talla_nombre, precioData);
+
+      // 2. Determinar tipo de precio según el tipo de cliente y cantidad
+      let precioUnitario = 0;
+      let tipoPrecio = '';
+
+      const tipoClienteNum = parseInt(tipoCliente);
+
+      // Mayorista (5) - requiere cantidad mínima
+      if (tipoClienteNum === 5 && cantidadKg >= precioData.cantidad_min_mayorista) {
+        precioUnitario = precioData.precio_mayorista;
+        tipoPrecio = 'mayorista';
+      }
+      // Restaurante (9)
+      else if (tipoClienteNum === 9) {
+        precioUnitario = precioData.precio_restaurante;
+        tipoPrecio = 'restaurante';
+      }
+      // Otros tipos - precio menudeo
+      else {
+        precioUnitario = precioData.precio_menudeo;
+        tipoPrecio = 'menudeo';
+      }
+
+      console.log(`💵 Precio unitario aplicado: $${precioUnitario} (${tipoPrecio})`);
+
+      // 3. Calcular montos
+      const montoBruto = precioUnitario * cantidadKg;
+      const descuentoPorPorcentaje = (montoBruto * descuentoPorcentaje) / 100;
+      const montoDescuentos = descuentoPorPorcentaje + descuentoMxn;
+      const montoTotal = montoBruto - montoDescuentos;
+
+      console.log('📊 Cálculo final:', {
+        talla: precioData.talla_nombre,
+        tipoCliente,
+        cantidadKg,
+        precioUnitario,
+        tipoPrecio,
+        montoBruto,
+        montoDescuentos,
+        montoTotal
+      });
+
+      return {
+        precio_unitario: precioUnitario,
+        monto_bruto: montoBruto,
+        monto_descuentos: montoDescuentos,
+        monto_total: montoTotal,
+        tipo_precio_aplicado: tipoPrecio,
+        talla_detectada: precioData.talla_nombre
+      };
+
+    } catch (error) {
+      console.error('❌ Error calculando precio inmediato:', error);
+      return null;
+    }
+  }, [precios]);
+
   return {
     precios,
     isLoading,
     calcularPrecio,
+    calcularPrecioInmediato,
     obtenerPrecioDirect,
     refreshPrecios,
   };

@@ -39,6 +39,7 @@ interface OficinaForm {
   codigo: string;
   direccion: string;
   telefono: string;
+  responsable_principal_id: number | null;
   activa: boolean;
 }
 
@@ -56,6 +57,7 @@ export function AdminOficinasView() {
     codigo: '',
     direccion: '',
     telefono: '',
+    responsable_principal_id: null,
     activa: true
   });
 
@@ -97,8 +99,8 @@ export function AdminOficinasView() {
           codigo: formData.codigo || null,
           direccion: formData.direccion || null,
           telefono: formData.telefono || null,
-          activa: formData.activa,
-          created_at: new Date().toISOString()
+          responsable_principal_id: formData.responsable_principal_id,
+          activa: formData.activa
         })
         .select();
 
@@ -131,6 +133,7 @@ export function AdminOficinasView() {
           codigo: formData.codigo || null,
           direccion: formData.direccion || null,
           telefono: formData.telefono || null,
+          responsable_principal_id: formData.responsable_principal_id,
           activa: formData.activa
         })
         .eq('id', id)
@@ -163,6 +166,7 @@ export function AdminOficinasView() {
         codigo: oficina.codigo || '',
         direccion: oficina.direccion || '',
         telefono: oficina.telefono || '',
+        responsable_principal_id: oficina.responsable_principal_id || null,
         activa: !oficina.activa
       });
     } catch (error) {
@@ -179,6 +183,7 @@ export function AdminOficinasView() {
       codigo: oficina.codigo || '',
       direccion: oficina.direccion || '',
       telefono: oficina.telefono || '',
+      responsable_principal_id: oficina.responsable_principal_id || null,
       activa: oficina.activa ?? true
     });
   };
@@ -228,7 +233,7 @@ export function AdminOficinasView() {
         // Crear nuevo
         success = await createOficina(form);
         if (success) {
-          setNewOficinaForm({ nombre: '', codigo: '', direccion: '', telefono: '', activa: true });
+          setNewOficinaForm({ nombre: '', codigo: '', direccion: '', telefono: '', responsable_principal_id: null, activa: true });
           setShowAddDialog(false);
         }
       }

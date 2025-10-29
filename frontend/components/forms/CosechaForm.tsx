@@ -17,9 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Plus, Trash2, ShoppingCart } from "lucide-react";
 import { useCosechas } from "@/lib/hooks/useCosechas";
 import { usePedidos, type Pedido } from "@/lib/hooks/usePedidos";
+import { usePrecios, type CalculoPrecio } from "@/lib/hooks/usePrecios";
+import { mockData } from "@/lib/mock-data";
 
 interface CosechaFormProps {
   onCosechaRegistered?: () => void;
@@ -48,8 +51,32 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
   const [pedidosDisponibles, setPedidosDisponibles] = useState<Pedido[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
+  // Estados para venta inmediata
+  const [esVentaInmediata, setEsVentaInmediata] = useState(false);
+  const [clientes, setClientes] = useState<any[]>([]);
+  const [tiposCliente, setTiposCliente] = useState<any[]>([]);
+  const [oficinas, setOficinas] = useState<any[]>([]);
+  const [calculoPrecio, setCalculoPrecio] = useState<CalculoPrecio | null>(null);
+  const [isCalculatingPrice, setIsCalculatingPrice] = useState(false);
+  const [datosVenta, setDatosVenta] = useState({
+    clienteId: '',
+    tipoClienteId: '',
+    oficinaId: '',
+    enteroKgs: 0,
+    descuentoPorcentaje: 0,
+    descuentoMxn: 0,
+    metodoPago: '',
+    formaPago: '',
+    estatusPagoCliente: '',
+    folioTransferencia: '',
+    tipoFactura: '',
+    usoCfdi: '',
+    estatusFactura: ''
+  });
+
   const { addCosecha, getNextFolio } = useCosechas();
   const { pedidos } = usePedidos();
+  const { calcularPrecioInmediato } = usePrecios();
 
   const form = useForm<CosechaFormData>({
     resolver: zodResolver(cosechaSchema),
@@ -128,9 +155,95 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
     loadData();
   }, []);
 
-  // Calcular peso total automáticamente sumando todas las entradas
+  // Cargar datos para venta inmediata
+  const loadVentaData = async () => {
+    try {
+      console.log("🔄 Cargando datos para venta...");
+
+      const [clientesRes, tiposRes, oficinasRes] = await Promise.all([
+        supabase.from('clientes').select('id, nombre, telefono, email').eq('activo', true).order('nombre'),
+        supabase.from('tipos_cliente').select('id, nombre').eq('activo', true).order('nombre'),
+        supabase.from('oficinas').select('id, nombre').eq('activa', true).order('nombre')
+      ]);
+
+      if (clientesRes.data) setClientes(clientesRes.data);
+      if (tiposRes.data) setTiposCliente(tiposRes.data);
+      if (oficinasRes.data) setOficinas(oficinasRes.data);
+
+      console.log("✅ Datos de venta cargados");
+    } catch (error) {
+      console.error("❌ Error cargando datos de venta:", error);
+    }
+  };
+
+  // Cargar datos de venta cuando se activa la opción
+  useEffect(() => {
+    if (esVentaInmediata) {
+      loadVentaData();
+    }
+  }, [esVentaInmediata]);
+
+  // Watch all form fields for reactive updates
   const watchAllFields = watch();
 
+  // Calcular precio automáticamente cuando cambien los datos de venta
+  useEffect(() => {
+    const recalcularPrecio = async () => {
+      if (!esVentaInmediata || !datosVenta.tipoClienteId || !datosVenta.enteroKgs || datosVenta.enteroKgs <= 0) {
+        setCalculoPrecio(null);
+        return;
+      }
+
+      try {
+        setIsCalculatingPrice(true);
+        console.log('💰 Calculando precio automático para venta inmediata...', {
+          tipoCliente: datosVenta.tipoClienteId,
+          enteroKgs: datosVenta.enteroKgs,
+          descuentoPorcentaje: datosVenta.descuentoPorcentaje || 0,
+          descuentoMxn: datosVenta.descuentoMxn || 0
+        });
+
+        // Usar la talla predominante de la cosecha (primera talla)
+        const tallaId = watchAllFields.entradas?.[0]?.tallaId || 1;
+
+        const resultado = await calcularPrecioInmediato(
+          tallaId, // Usar talla directamente para venta inmediata
+          datosVenta.tipoClienteId,
+          datosVenta.enteroKgs,
+          datosVenta.descuentoPorcentaje || 0,
+          datosVenta.descuentoMxn || 0
+        );
+
+        if (resultado) {
+          setCalculoPrecio(resultado);
+          console.log('✅ Precio calculado para venta inmediata:', resultado);
+        } else {
+          console.warn('⚠️ No se pudo calcular el precio');
+          setCalculoPrecio(null);
+        }
+      } catch (error) {
+        console.error('❌ Error calculando precio:', error);
+        setCalculoPrecio(null);
+      } finally {
+        setIsCalculatingPrice(false);
+      }
+    };
+
+    const timeoutId = setTimeout(recalcularPrecio, 500);
+    return () => clearTimeout(timeoutId);
+  }, [esVentaInmediata, datosVenta.tipoClienteId, datosVenta.enteroKgs, datosVenta.descuentoPorcentaje, datosVenta.descuentoMxn, watchAllFields.entradas, calcularPrecioInmediato]);
+
+  // Sincronizar peso de cosecha con datos de venta
+  useEffect(() => {
+    if (esVentaInmediata && watchAllFields.pesoTotalKg) {
+      setDatosVenta(prev => ({
+        ...prev,
+        enteroKgs: watchAllFields.pesoTotalKg || 0
+      }));
+    }
+  }, [esVentaInmediata, watchAllFields.pesoTotalKg]);
+
+  // Calcular peso total automáticamente sumando todas las entradas
   useEffect(() => {
     if (watchAllFields.entradas) {
       const pesoTotal = watchAllFields.entradas.reduce((sum, entrada) => {
@@ -150,9 +263,78 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
     try {
       console.log("🔄 Registrando cosecha...", data);
 
+      // Registrar la cosecha primero
       await addCosecha(data);
+      const cosechaFolio = getNextFolio() - 1;
 
-      alert(`Cosecha registrada exitosamente con folio #${getNextFolio() - 1}`);
+      // Si es venta inmediata, registrar también la venta
+      if (esVentaInmediata) {
+        console.log("🛒 Registrando venta inmediata...", datosVenta);
+
+        // Validar datos de venta
+        if (!datosVenta.clienteId || !datosVenta.tipoClienteId || !calculoPrecio) {
+          throw new Error("Por favor completa todos los campos obligatorios de la venta");
+        }
+
+        if (!datosVenta.metodoPago || !datosVenta.formaPago || !datosVenta.estatusPagoCliente || !datosVenta.tipoFactura || !datosVenta.estatusFactura) {
+          throw new Error("Por favor completa los datos de método de pago y facturación");
+        }
+
+        // Obtener el folio de venta siguiente
+        const { data: ventaFolio } = await supabase
+          .from('ventas')
+          .select('folio')
+          .order('folio', { ascending: false })
+          .limit(1);
+
+        const nextVentaFolio = ventaFolio && ventaFolio.length > 0 ? ventaFolio[0].folio + 1 : 1;
+
+        // Obtener la talla predominante de la cosecha (primera talla)
+        const tallaPredominante = data.entradas[0]?.tallaId || 1;
+
+        // Obtener IDs de los datos seleccionados
+        const metodoPagoId = mockData.metodosPago.find(m => m.name === datosVenta.metodoPago)?.id || 1;
+        const formaPagoId = mockData.formasPago.find(f => f.name === datosVenta.formaPago)?.id || 1;
+        const estatusPagoClienteId = mockData.estatusPagoCliente.find(e => e.name === datosVenta.estatusPagoCliente)?.id || 1;
+        const tipoFacturaId = mockData.tiposFactura.find(t => t.name === datosVenta.tipoFactura)?.id || 1;
+        const estatusFacturaId = mockData.estatusFactura.find(e => e.name === datosVenta.estatusFactura)?.id || 1;
+
+        // Crear la venta usando los datos calculados
+        const ventaData = {
+          folio: nextVentaFolio,
+          oficina_id: datosVenta.oficinaId ? parseInt(datosVenta.oficinaId) : null,
+          responsable_id: parseInt(data.responsable),
+          fecha_entrega: data.fechaCosecha.split('T')[0], // Solo la fecha, no la hora
+          cliente_id: parseInt(datosVenta.clienteId),
+          tipo_cliente_id: parseInt(datosVenta.tipoClienteId),
+          tipo_producto_id: 1, // Camarón entero por defecto
+          talla_camaron_id: tallaPredominante,
+          entero_kgs: calculoPrecio.peso_usado,
+          precio_venta: calculoPrecio.precio_unitario,
+          descuento_porcentaje: datosVenta.descuentoPorcentaje || 0,
+          descuento_mxn: datosVenta.descuentoMxn || 0,
+          metodo_pago_id: metodoPagoId,
+          forma_pago_id: formaPagoId,
+          estatus_pago_cliente_id: estatusPagoClienteId,
+          folio_transferencia: datosVenta.folioTransferencia || null,
+          tipo_factura_id: tipoFacturaId,
+          uso_cfdi: datosVenta.usoCfdi || null,
+          estatus_factura_id: estatusFacturaId
+        };
+
+        const { error: ventaError } = await supabase
+          .from('ventas')
+          .insert(ventaData);
+
+        if (ventaError) {
+          console.error("❌ Error registrando venta:", ventaError);
+          throw new Error(`Error al registrar la venta: ${ventaError.message}`);
+        }
+
+        alert(`¡Éxito! Cosecha registrada con folio #${cosechaFolio} y venta registrada con folio #${nextVentaFolio}`);
+      } else {
+        alert(`Cosecha registrada exitosamente con folio #${cosechaFolio}`);
+      }
 
       // Limpiar formulario
       form.reset({
@@ -163,6 +345,25 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
         notas: "",
       });
 
+      // Limpiar datos de venta
+      setEsVentaInmediata(false);
+      setCalculoPrecio(null);
+      setDatosVenta({
+        clienteId: '',
+        tipoClienteId: '',
+        oficinaId: '',
+        enteroKgs: 0,
+        descuentoPorcentaje: 0,
+        descuentoMxn: 0,
+        metodoPago: '',
+        formaPago: '',
+        estatusPagoCliente: '',
+        folioTransferencia: '',
+        tipoFactura: '',
+        usoCfdi: '',
+        estatusFactura: ''
+      });
+
       if (onCosechaRegistered) {
         setTimeout(() => {
           onCosechaRegistered();
@@ -170,8 +371,8 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
       }
 
     } catch (error) {
-      console.error("❌ Error al registrar cosecha:", error);
-      alert(`Error al registrar la cosecha: ${error.message || 'Error desconocido'}`);
+      console.error("❌ Error al registrar:", error);
+      alert(`Error: ${error.message || 'Error desconocido'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -424,6 +625,288 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
               </div>
             </div>
 
+            {/* Sección de Venta Inmediata */}
+            <div className="space-y-4 pt-6 border-t border-gray-200">
+              <div className="flex items-center space-x-3">
+                <Checkbox
+                  id="venta-inmediata"
+                  checked={esVentaInmediata}
+                  onCheckedChange={(checked) => setEsVentaInmediata(checked as boolean)}
+                />
+                <Label htmlFor="venta-inmediata" className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  <ShoppingCart className="h-4 w-4" />
+                  ¿Esta cosecha es para venta inmediata?
+                </Label>
+              </div>
+              <p className="text-sm text-gray-600 ml-7">
+                Selecciona esta opción si el cliente ya está aquí y va a comprar toda la cosecha inmediatamente.
+              </p>
+
+              {esVentaInmediata && (
+                <div className="ml-7 p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-6">
+                  <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4" />
+                    Datos de la Venta
+                  </h4>
+
+                  {/* Datos del Cliente */}
+                  <div className="space-y-4">
+                    <h5 className="text-md font-medium text-gray-800 border-b border-blue-200 pb-1">Cliente</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Cliente *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, clienteId: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar cliente" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clientes.map((cliente) => (
+                              <SelectItem key={cliente.id} value={cliente.id.toString()}>
+                                {cliente.nombre}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Tipo de Cliente *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, tipoClienteId: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar tipo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tiposCliente.map((tipo) => (
+                              <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                                {tipo.nombre}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Peso y Precio */}
+                  <div className="space-y-4">
+                    <h5 className="text-md font-medium text-gray-800 border-b border-blue-200 pb-1">Producto</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Peso (kg)</Label>
+                        <div className="h-10 px-3 py-2 border border-gray-300 bg-gray-50 rounded-md text-sm">
+                          {(watch("pesoTotalKg") || 0).toFixed(3)} kg
+                        </div>
+                        <p className="text-xs text-gray-600">Se toma automáticamente de la cosecha</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Precio Sugerido</Label>
+                        <div className="h-10 px-3 py-2 border border-gray-300 bg-green-50 rounded-md text-sm font-semibold text-green-800">
+                          {isCalculatingPrice ? "Calculando..." :
+                           calculoPrecio ? `$${calculoPrecio.precio_unitario.toFixed(2)}/kg` :
+                           "Selecciona tipo de cliente"}
+                        </div>
+                        <p className="text-xs text-gray-600">Precio automático según tipo de cliente</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Descuentos */}
+                  <div className="space-y-4">
+                    <h5 className="text-md font-medium text-gray-800 border-b border-blue-200 pb-1">Descuentos</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Descuento %</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          max="100"
+                          value={datosVenta.descuentoPorcentaje}
+                          onChange={(e) => setDatosVenta({...datosVenta, descuentoPorcentaje: parseFloat(e.target.value) || 0})}
+                          className="border-gray-300"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Descuento MXN</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={datosVenta.descuentoMxn}
+                          onChange={(e) => setDatosVenta({...datosVenta, descuentoMxn: parseFloat(e.target.value) || 0})}
+                          className="border-gray-300"
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Total Final</Label>
+                        <div className="h-10 px-3 py-2 border border-gray-300 bg-green-50 rounded-md text-sm font-bold text-green-800">
+                          {calculoPrecio ? `$${calculoPrecio.monto_total.toFixed(2)}` : "$0.00"}
+                        </div>
+                        {calculoPrecio && calculoPrecio.monto_descuentos > 0 && (
+                          <p className="text-xs text-gray-600">
+                            Descuentos: $${calculoPrecio.monto_descuentos.toFixed(2)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Método de Pago */}
+                  <div className="space-y-4">
+                    <h5 className="text-md font-medium text-gray-800 border-b border-blue-200 pb-1">Método de Pago</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Método de Pago *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, metodoPago: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar método" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockData.metodosPago.map((metodo) => (
+                              <SelectItem key={metodo.id} value={metodo.name}>
+                                {metodo.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Forma de Pago *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, formaPago: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar forma" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockData.formasPago.map((forma) => (
+                              <SelectItem key={forma.id} value={forma.name}>
+                                {forma.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Estatus Pago *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, estatusPagoCliente: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar estatus" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockData.estatusPagoCliente.map((estatus) => (
+                              <SelectItem key={estatus.id} value={estatus.name}>
+                                {estatus.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">Folio Transferencia (opcional)</Label>
+                      <Input
+                        value={datosVenta.folioTransferencia}
+                        onChange={(e) => setDatosVenta({...datosVenta, folioTransferencia: e.target.value})}
+                        className="border-gray-300"
+                        placeholder="Número de transferencia o referencia"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Facturación */}
+                  <div className="space-y-4">
+                    <h5 className="text-md font-medium text-gray-800 border-b border-blue-200 pb-1">Facturación</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Tipo de Factura *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, tipoFactura: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar tipo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockData.tiposFactura.map((tipo) => (
+                              <SelectItem key={tipo.id} value={tipo.name}>
+                                {tipo.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-700">Estatus Factura *</Label>
+                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, estatusFactura: value})}>
+                          <SelectTrigger className="border-gray-300">
+                            <SelectValue placeholder="Seleccionar estatus" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {mockData.estatusFactura.map((estatus) => (
+                              <SelectItem key={estatus.id} value={estatus.name}>
+                                {estatus.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">Uso CFDI (opcional)</Label>
+                      <Input
+                        value={datosVenta.usoCfdi}
+                        onChange={(e) => setDatosVenta({...datosVenta, usoCfdi: e.target.value})}
+                        className="border-gray-300"
+                        placeholder="Ej: G03 - Gastos en general"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Oficina */}
+                  <div className="space-y-4">
+                    <h5 className="text-md font-medium text-gray-800 border-b border-blue-200 pb-1">Información Adicional</h5>
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium text-gray-700">Oficina</Label>
+                      <Select onValueChange={(value) => setDatosVenta({...datosVenta, oficinaId: value})}>
+                        <SelectTrigger className="border-gray-300">
+                          <SelectValue placeholder="Seleccionar oficina" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {oficinas.map((oficina) => (
+                            <SelectItem key={oficina.id} value={oficina.id.toString()}>
+                              {oficina.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Resumen Final */}
+                  {calculoPrecio && (
+                    <div className="p-4 bg-green-100 border border-green-300 rounded-lg">
+                      <h6 className="font-semibold text-green-900 mb-2">Resumen de la Venta</h6>
+                      <div className="text-sm text-green-800 space-y-1">
+                        <p><strong>Peso:</strong> {datosVenta.enteroKgs.toFixed(3)} kg</p>
+                        <p><strong>Precio base:</strong> ${calculoPrecio.precio_unitario.toFixed(2)}/kg</p>
+                        <p><strong>Subtotal:</strong> ${calculoPrecio.monto_bruto.toFixed(2)}</p>
+                        {calculoPrecio.monto_descuentos > 0 && (
+                          <p><strong>Descuentos:</strong> -${calculoPrecio.monto_descuentos.toFixed(2)}</p>
+                        )}
+                        <p className="text-lg font-bold border-t border-green-300 pt-1">
+                          <strong>Total Final:</strong> ${calculoPrecio.monto_total.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Botones */}
             <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
               <Button
@@ -447,7 +930,10 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                 disabled={isSubmitting}
                 onClick={() => console.log("🚀 Submit button clicked!")}
               >
-                {isSubmitting ? "Registrando..." : "Registrar Cosecha"}
+                {isSubmitting
+                  ? (esVentaInmediata ? "Registrando Cosecha + Venta..." : "Registrando Cosecha...")
+                  : (esVentaInmediata ? "Registrar Cosecha + Venta" : "Registrar Cosecha")
+                }
               </Button>
             </div>
           </form>

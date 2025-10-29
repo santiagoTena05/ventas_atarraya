@@ -27,6 +27,8 @@ import {
 interface Responsable {
   id: number;
   nombre: string;
+  codigo?: string;
+  oficina_id?: number;
   telefono?: string;
   email?: string;
   activo?: boolean;
@@ -36,6 +38,8 @@ interface Responsable {
 
 interface ResponsableForm {
   nombre: string;
+  codigo: string;
+  oficina_id: number | null;
   telefono: string;
   email: string;
   activo: boolean;
@@ -43,6 +47,7 @@ interface ResponsableForm {
 
 export function AdminResponsablesView() {
   const [responsables, setResponsables] = useState<Responsable[]>([]);
+  const [oficinas, setOficinas] = useState<{ id: number; nombre: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -52,10 +57,32 @@ export function AdminResponsablesView() {
   const [confirmAction, setConfirmAction] = useState<{ type: 'save' | 'delete' | 'toggle', data?: any } | null>(null);
   const [newResponsableForm, setNewResponsableForm] = useState<ResponsableForm>({
     nombre: '',
+    codigo: '',
+    oficina_id: null,
     telefono: '',
     email: '',
     activo: true
   });
+
+  // Cargar oficinas
+  const loadOficinas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('oficinas')
+        .select('id, nombre')
+        .eq('activa', true)
+        .order('nombre');
+
+      if (error) {
+        console.error('❌ Error cargando oficinas:', error);
+        return;
+      }
+
+      setOficinas(data || []);
+    } catch (error) {
+      console.error('❌ Error cargando oficinas:', error);
+    }
+  };
 
   // Cargar responsables
   const loadResponsables = async () => {
@@ -92,10 +119,11 @@ export function AdminResponsablesView() {
         .from('responsables')
         .insert({
           nombre: formData.nombre,
+          codigo: formData.codigo || null,
+          oficina_id: formData.oficina_id,
           telefono: formData.telefono || null,
           email: formData.email || null,
-          activo: formData.activo,
-          created_at: new Date().toISOString()
+          activo: formData.activo
         })
         .select();
 
@@ -125,10 +153,11 @@ export function AdminResponsablesView() {
         .from('responsables')
         .update({
           nombre: formData.nombre,
+          codigo: formData.codigo || null,
+          oficina_id: formData.oficina_id,
           telefono: formData.telefono || null,
           email: formData.email || null,
-          activo: formData.activo,
-          updated_at: new Date().toISOString()
+          activo: formData.activo
         })
         .eq('id', id)
         .select();
@@ -157,6 +186,8 @@ export function AdminResponsablesView() {
 
       return await updateResponsable(id, {
         nombre: responsable.nombre,
+        codigo: responsable.codigo || '',
+        oficina_id: responsable.oficina_id || null,
         telefono: responsable.telefono || '',
         email: responsable.email || '',
         activo: !responsable.activo
@@ -172,6 +203,8 @@ export function AdminResponsablesView() {
     setEditingId(responsable.id);
     setEditForm({
       nombre: responsable.nombre,
+      codigo: responsable.codigo || '',
+      oficina_id: responsable.oficina_id || null,
       telefono: responsable.telefono || '',
       email: responsable.email || '',
       activo: responsable.activo ?? true
@@ -223,7 +256,7 @@ export function AdminResponsablesView() {
         // Crear nuevo
         success = await createResponsable(form);
         if (success) {
-          setNewResponsableForm({ nombre: '', telefono: '', email: '', activo: true });
+          setNewResponsableForm({ nombre: '', codigo: '', oficina_id: null, telefono: '', email: '', activo: true });
           setShowAddDialog(false);
         }
       }
@@ -242,6 +275,7 @@ export function AdminResponsablesView() {
   };
 
   useEffect(() => {
+    loadOficinas();
     loadResponsables();
   }, []);
 
@@ -326,6 +360,8 @@ export function AdminResponsablesView() {
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-3 font-medium text-gray-900">Nombre</th>
+                  <th className="text-left p-3 font-medium text-gray-900">Código</th>
+                  <th className="text-left p-3 font-medium text-gray-900">Oficina</th>
                   <th className="text-left p-3 font-medium text-gray-900">Teléfono</th>
                   <th className="text-left p-3 font-medium text-gray-900">Email</th>
                   <th className="text-center p-3 font-medium text-gray-900">Estado</th>
@@ -344,6 +380,26 @@ export function AdminResponsablesView() {
                             className="w-full"
                             placeholder="Nombre completo"
                           />
+                        </td>
+                        <td className="p-3">
+                          <Input
+                            value={editForm.codigo}
+                            onChange={(e) => setEditForm({...editForm, codigo: e.target.value})}
+                            className="w-full"
+                            placeholder="Código"
+                          />
+                        </td>
+                        <td className="p-3">
+                          <select
+                            value={editForm.oficina_id || ''}
+                            onChange={(e) => setEditForm({...editForm, oficina_id: e.target.value ? Number(e.target.value) : null})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                          >
+                            <option value="">Sin oficina</option>
+                            {oficinas.map(oficina => (
+                              <option key={oficina.id} value={oficina.id}>{oficina.nombre}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="p-3">
                           <Input
@@ -368,6 +424,12 @@ export function AdminResponsablesView() {
                         <td className="p-3">
                           <div className="font-medium text-gray-900">{responsable.nombre}</div>
                           <div className="text-xs text-gray-500">ID: {responsable.id}</div>
+                        </td>
+                        <td className="p-3 text-sm text-gray-600">
+                          {responsable.codigo || '-'}
+                        </td>
+                        <td className="p-3 text-sm text-gray-600">
+                          {oficinas.find(o => o.id === responsable.oficina_id)?.nombre || '-'}
                         </td>
                         <td className="p-3 text-sm text-gray-600">
                           {responsable.telefono || '-'}
@@ -447,6 +509,29 @@ export function AdminResponsablesView() {
                 onChange={(e) => setNewResponsableForm({...newResponsableForm, nombre: e.target.value})}
                 placeholder="Nombre completo del responsable"
               />
+            </div>
+            <div>
+              <Label htmlFor="nuevo-codigo">Código</Label>
+              <Input
+                id="nuevo-codigo"
+                value={newResponsableForm.codigo}
+                onChange={(e) => setNewResponsableForm({...newResponsableForm, codigo: e.target.value})}
+                placeholder="Código único del responsable"
+              />
+            </div>
+            <div>
+              <Label htmlFor="nuevo-oficina">Oficina</Label>
+              <select
+                id="nuevo-oficina"
+                value={newResponsableForm.oficina_id || ''}
+                onChange={(e) => setNewResponsableForm({...newResponsableForm, oficina_id: e.target.value ? Number(e.target.value) : null})}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+              >
+                <option value="">Seleccionar oficina (opcional)</option>
+                {oficinas.map(oficina => (
+                  <option key={oficina.id} value={oficina.id}>{oficina.nombre}</option>
+                ))}
+              </select>
             </div>
             <div>
               <Label htmlFor="nuevo-telefono">Teléfono</Label>

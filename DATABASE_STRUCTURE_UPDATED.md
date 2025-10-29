@@ -1,346 +1,372 @@
-# 🗄️ Estructura de Base de Datos ACTUALIZADA - Agua Blanca Seafoods
+# 🗄️ Estructura Real de Base de Datos - Agua Blanca Seafoods
 
-## 🚨 CAMBIOS CRÍTICOS REQUERIDOS
+Esta documentación refleja la estructura **REAL** actual de la base de datos PostgreSQL en Supabase para el sistema de gestión de ventas y cosechas.
 
-### 1. **Tabla `clientes` - Actualización URGENTE**
+*Actualizado: 21 de octubre de 2025*
+
+---
+
+## 📊 Tablas Principales
+
+### 1. `ventas` - Registro Principal de Ventas
 
 ```sql
--- MODIFICAR LA TABLA CLIENTES PARA INCLUIR TODOS LOS CLIENTES ACTUALES
-CREATE TABLE clientes (
+CREATE TABLE ventas (
   id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-  nombre VARCHAR(255) NOT NULL,
+  folio INTEGER UNIQUE NOT NULL,
+
+  -- Datos Administrativos
+  oficina_id BIGINT REFERENCES oficinas(id),
+  responsable_id BIGINT REFERENCES responsables(id),
+  region_mercado_id BIGINT REFERENCES regiones_mercado(id),
+
+  -- Datos de Cosecha
+  cosecha_id BIGINT REFERENCES cosechas(id),
+  fecha_entrega DATE NOT NULL,
+
+  -- Datos del Cliente
+  cliente_id BIGINT REFERENCES clientes(id),
   tipo_cliente_id BIGINT REFERENCES tipos_cliente(id),
-  oficina VARCHAR(10) DEFAULT 'MV', -- Nueva columna para distinguir MV/ALV
+  no_orden_atarraya VARCHAR(100),
 
-  -- Información de Contacto
-  telefono VARCHAR(20),
-  email VARCHAR(255),
-  direccion TEXT,
-  ciudad VARCHAR(100),
-  estado VARCHAR(100),
-  codigo_postal VARCHAR(10),
+  -- Datos del Producto
+  tipo_producto_id BIGINT REFERENCES tipos_producto(id),
+  talla_camaron_id BIGINT REFERENCES tallas_camaron(id),
+  entero_kgs DECIMAL(10,3) NOT NULL DEFAULT 0,
+  precio_venta DECIMAL(10,2) NOT NULL DEFAULT 0,
+  monto_venta DECIMAL(12,2) GENERATED ALWAYS AS (entero_kgs * precio_venta) STORED,
 
-  -- Información Fiscal
-  rfc VARCHAR(13),
-  razon_social VARCHAR(255),
+  -- Descuentos
+  descuento_porcentaje DECIMAL(5,2) DEFAULT 0,
+  descuento_mxn DECIMAL(10,2) DEFAULT 0,
+  total_orden DECIMAL(12,2) GENERATED ALWAYS AS (
+    monto_venta - (monto_venta * descuento_porcentaje / 100) - descuento_mxn
+  ) STORED,
 
-  -- Configuración
-  activo BOOLEAN DEFAULT TRUE,
+  -- Método de Pago
+  metodo_pago_id BIGINT REFERENCES metodos_pago(id),
+  forma_pago_id BIGINT REFERENCES formas_pago(id),
+  estatus_pago_cliente_id BIGINT REFERENCES estatus_pago(id),
+  folio_transferencia VARCHAR(100),
+
+  -- Facturación
+  tipo_factura_id BIGINT REFERENCES tipos_factura(id),
+  uso_cfdi VARCHAR(100),
+  estatus_factura_id BIGINT REFERENCES estatus_factura(id),
+
+  -- Auditoría
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID,
+  updated_by UUID
+);
+```
+
+### 2. `cosechas` - Registro de Cosechas
+
+```sql
+CREATE TABLE cosechas (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  folio BIGINT UNIQUE NOT NULL,
+  responsable_id BIGINT REFERENCES responsables(id),
+  oficina_id BIGINT REFERENCES oficinas(id),
+  fecha_cosecha TIMESTAMPTZ NOT NULL,
+  peso_total_kg NUMERIC NOT NULL,
+  estado cosecha_estado DEFAULT 'pendiente', -- ENUM: 'pendiente', 'procesada', 'vendida'
   notas TEXT,
 
   -- Auditoría
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_by UUID REFERENCES auth.users(id)
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID,
+  updated_by UUID
 );
-
--- Índice para búsqueda rápida por oficina
-CREATE INDEX idx_clientes_oficina ON clientes(oficina);
 ```
 
-### 2. **Script de Datos Iniciales de Clientes - COMPLETO**
+### 3. `cosecha_tallas` - Relación Cosechas-Tallas
 
 ```sql
--- CLIENTES MV (Mercado Vermouth)
-INSERT INTO clientes (nombre, tipo_cliente_id, oficina) VALUES
--- Lista completa de clientes MV del código actual
-('abraham', 1, 'MV'),
-('Jorge Gamboa', 1, 'MV'),
-('Adriana', 1, 'MV'),
-('Lamarca', 1, 'MV'),
-('afrodita', 1, 'MV'),
-('Agua Sala', 1, 'MV'),
-('Agua salá', 1, 'MV'),
-('agustin garcia', 1, 'MV'),
-('Alexis', 1, 'MV'),
-('Alfonso', 1, 'MV'),
-('ALFONZO', 1, 'MV'),
-('ali vega', 1, 'MV'),
-('alvaro -bacocho', 1, 'MV'),
-('amiga manuel', 1, 'MV'),
-('anastasio', 1, 'MV'),
-('Angel Monchistation', 1, 'MV'),
-('Angel Ruiz', 1, 'MV'),
-('Angel Santiago', 1, 'MV'),
-('angel tilzapote', 1, 'MV'),
-('Armando Lonaza', 1, 'MV'),
-('avelino', 1, 'MV'),
-('azucena', 1, 'MV'),
-('berenica-escondida', 1, 'MV'),
-('berenice A1', 1, 'MV'),
-('Bunker de JP', 1, 'MV'),
-('carlos', 1, 'MV'),
-('Carlos sada', 1, 'MV'),
-('Carniceria Ojeda', 1, 'MV'),
-('Carpintero Patilla', 1, 'MV'),
-('casa de los angeles', 1, 'MV'),
-('casona Sforza', 1, 'MV'),
-('cesar', 1, 'MV'),
-('Charly', 1, 'MV'),
-('Chef Saúl', 9, 'MV'),
-('Chofer Larvas', 1, 'MV'),
-('Cipriano', 1, 'MV'),
-('Claudia Peña', 1, 'MV'),
-('claudia zachila', 1, 'MV'),
-('coro', 1, 'MV'),
-('Cristobal Fabian', 1, 'MV'),
-('daniel serrano', 1, 'MV'),
-('DAVID', 1, 'MV'),
-('david esconido suit', 1, 'MV'),
-('diana facen', 1, 'MV'),
-('Don Memo', 1, 'MV'),
-('DONYMAR', 1, 'MV'),
-('eduardo', 1, 'MV'),
-('eduardo cruz', 1, 'MV'),
-('Eduardo Huerta', 1, 'MV'),
-('Efra Estrada', 1, 'MV'),
-('El Crucero', 1, 'MV'),
-('El Nene', 1, 'MV'),
-('elias', 1, 'MV'),
-('Erick', 1, 'MV'),
-('fabi aroche', 1, 'MV'),
-('Fernando Fabian', 1, 'MV'),
-('Fish Shack', 9, 'MV'),
-('Francis', 1, 'MV'),
-('GABINO', 1, 'MV'),
-('gamaliel', 1, 'MV'),
-('GENOVEVA', 1, 'MV'),
-('german', 1, 'MV'),
-('gilberto santiago', 1, 'MV'),
-('Gilberto Torres', 1, 'MV'),
-('Gudelia', 1, 'MV'),
-('Guilibaldo bacocho', 1, 'MV'),
-('Hilario', 1, 'MV'),
-('Hotel Escondido', 1, 'MV'),
-('Hugo', 1, 'MV'),
-('hugo baxter', 1, 'MV'),
-('illian cullen', 1, 'MV'),
-('isaac', 1, 'MV'),
-('Israel Garcia', 1, 'MV'),
-('ISSAC', 1, 'MV'),
-('ivan muciño', 1, 'MV'),
-('Jairo', 1, 'MV'),
-('JAVIER', 1, 'MV'),
-('Jesus juarez', 1, 'MV'),
-('jhon coast', 1, 'MV'),
-('Jon', 1, 'MV'),
-('jon coates', 1, 'MV'),
-('josue', 1, 'MV'),
-('Juan Alderete', 1, 'MV'),
-('Karla Atala', 1, 'MV'),
-('katie wiliams', 1, 'MV'),
-('kris dondo', 1, 'MV'),
-('leo', 1, 'MV'),
-('licha panadero', 1, 'MV'),
-('linet', 1, 'MV'),
-('lizbeth', 1, 'MV'),
-('Lonaza', 1, 'MV'),
-('lucre peña', 1, 'MV'),
-('luis carreño', 1, 'MV'),
-('Luxo', 1, 'MV'),
-('manuel', 1, 'MV'),
-('maria josefa', 1, 'MV'),
-('mario', 1, 'MV'),
-('MARTIN FABIAN', 1, 'MV'),
-('Mauricio', 1, 'MV'),
-('MAX', 1, 'MV'),
-('maximiliano', 1, 'MV'),
-('MAXIMILIANO LOPEZ', 1, 'MV'),
-('maximino', 1, 'MV'),
-('Mercedes Lopez', 1, 'MV'),
-('MERMA', 1, 'MV'),
-('Michel', 1, 'MV'),
-('michel sereso', 1, 'MV'),
-('Mini L', 1, 'MV'),
-('Misael hija', 1, 'MV'),
-('Monchistation', 1, 'MV'),
-('monse', 1, 'MV'),
-('Moringa', 1, 'MV'),
-('MUESTRA -francis', 1, 'MV'),
-('Natalia Seligson', 1, 'MV'),
-('Nelson', 1, 'MV'),
-('Noe', 1, 'MV'),
-('nomad-hotal', 1, 'MV'),
-('Omar Fabian', 1, 'MV'),
-('Ostreria', 9, 'MV'),
-('otoniel', 1, 'MV'),
-('pamela', 1, 'MV'),
-('patilla', 1, 'MV'),
-('patrice', 1, 'MV'),
-('patrice-atrapasueños', 1, 'MV'),
-('Patricio', 1, 'MV'),
-('Pilar zicatela', 1, 'MV'),
-('Piyoli', 1, 'MV'),
-('plinio', 1, 'MV'),
-('Portezuelo', 1, 'MV'),
-('Porto Zuelo', 1, 'MV'),
-('Prudencio', 1, 'MV'),
-('Rafa', 1, 'MV'),
-('René', 1, 'MV'),
-('Rene Jesus', 1, 'MV'),
-('Russek', 1, 'MV'),
-('Sativa', 1, 'MV'),
-('Savanna', 1, 'MV'),
-('Silvia', 1, 'MV'),
-('simion', 1, 'MV'),
-('sonia', 1, 'MV'),
-('sonido leo', 1, 'MV'),
-('Surf and Spot', 1, 'MV'),
-('susana galvan', 1, 'MV'),
-('Susana Morro', 1, 'MV'),
-('Syndi', 1, 'MV'),
-('tomas davó', 1, 'MV'),
-('toto', 1, 'MV'),
-('tuli', 1, 'MV'),
-('Urbano', 1, 'MV'),
-('Velazquez', 1, 'MV'),
-('Verde Puerto La Punta', 1, 'MV'),
-('veronica', 1, 'MV'),
-('visitas a la granja', 1, 'MV'),
-('wendy c10', 1, 'MV'),
-('wes smith', 1, 'MV'),
-('Wokxaca', 9, 'MV'),
-('Yassine', 1, 'MV'),
-('yolanda park', 1, 'MV');
-
--- CLIENTES ALV (Acuacultura Lerma Vermouth) - Nota: Jorge Gamboa y Lamarca aparecen en ambas listas
-INSERT INTO clientes (nombre, tipo_cliente_id, oficina) VALUES
-('Jorge Gamboa', 1, 'ALV'),
-('Lamarca', 1, 'ALV');
+CREATE TABLE cosecha_tallas (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  cosecha_id BIGINT NOT NULL REFERENCES cosechas(id),
+  talla_camaron_id BIGINT NOT NULL REFERENCES tallas_camaron(id),
+  peso_talla_kg NUMERIC NOT NULL,
+  porcentaje_talla NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-### 3. **Modificación en la Tabla `ventas`**
+### 4. `cosecha_estanques` - Relación Cosechas-Estanques
 
 ```sql
--- AGREGAR CAMPOS CALCULADOS FALTANTES
-ALTER TABLE ventas
-ADD COLUMN descuento_calculado DECIMAL(12,2) GENERATED ALWAYS AS (monto_venta * descuento_porcentaje / 100) STORED,
-ADD COLUMN total_orden DECIMAL(12,2) GENERATED ALWAYS AS (monto_venta - (monto_venta * descuento_porcentaje / 100) - descuento_mxn) STORED;
+CREATE TABLE cosecha_estanques (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  cosecha_id BIGINT NOT NULL REFERENCES cosechas(id),
+  estanque_id BIGINT NOT NULL REFERENCES estanques(id),
+  peso_estanque_kg NUMERIC,
+  porcentaje_contribucion NUMERIC,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-### 4. **Nuevos Datos de Catálogos Basados en la Implementación**
+### 5. `clientes` - Información de Clientes
 
 ```sql
--- DATOS FALTANTES EN TIPOS DE CLIENTE
-INSERT INTO tipos_cliente (nombre) VALUES
-('Cliente Final'),
-('Distribuidor Local'),
-('Empleado'),
-('Granja'),
-('Mayorista'),
-('Menudeo'),
-('Minorista'),
-('Muestra'),
-('Restaurante'),
-('Retail Boutique'),
-('Venta Local');
+CREATE TABLE clientes (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  tipo_cliente_id BIGINT REFERENCES tipos_cliente(id),
+  oficina VARCHAR DEFAULT 'MV',
+  telefono VARCHAR,
+  email VARCHAR,
+  direccion TEXT,
+  ciudad VARCHAR,
+  estado VARCHAR,
+  codigo_postal VARCHAR,
+  rfc VARCHAR,
+  razon_social VARCHAR,
+  activo BOOLEAN DEFAULT true,
+  notas TEXT,
 
--- TALLAS DE CAMARÓN ACTUALIZADAS
-INSERT INTO tallas_camaron (nombre, rango_min, rango_max) VALUES
-('10-12', 10, 12),
-('12-15', 12, 15),
-('14-20', 14, 20),
-('21-25', 21, 25),
-('26-30', 26, 30),
-('31-35', 31, 35),
-('36-40', 36, 40),
-('41-50', 41, 50),
-('51-60', 51, 60),
-('61-70', 61, 70),
-('71-90', 71, 90);
-
--- RESPONSABLES ACTUALIZADOS
-INSERT INTO responsables (nombre, codigo) VALUES
-('Alex B.', 'ALEX'),
-('Carlos', 'CARLOS'),
-('Daniel S.', 'DANIEL'),
-('Gil', 'GIL'),
-('Manuel F.', 'MANUEL');
-
--- OFICINAS ACTUALIZADAS
-INSERT INTO oficinas (nombre, codigo) VALUES
-('MV Puerto Escondido', 'MV'),
-('ALV Lerma', 'ALV'),
-('Tonameca', 'TON');
+  -- Auditoría
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID
+);
 ```
 
-### 5. **Vista Optimizada para Autocomplete de Clientes**
+---
+
+## 📊 Tablas de Catálogos
+
+### `estanques` - Catálogo de Estanques
 
 ```sql
--- CREAR VISTA PARA FACILITAR EL AUTOCOMPLETE
-CREATE VIEW clientes_autocomplete AS
-SELECT
-  id,
-  nombre,
-  oficina,
-  tipo_cliente_id,
-  activo,
-  CASE
-    WHEN oficina = 'MV' THEN 'Cliente MV'
-    WHEN oficina = 'ALV' THEN 'Cliente ALV'
-    ELSE 'Cliente General'
-  END as tipo_oficina
-FROM clientes
-WHERE activo = true
-ORDER BY nombre;
+CREATE TABLE estanques (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  codigo VARCHAR,
+  capacidad_kg NUMERIC,
+  ubicacion TEXT,
+  activo BOOLEAN DEFAULT true,
+  notas TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-## 🔧 **Script de Creación Completo y Actualizado**
+### `oficinas` - Catálogo de Oficinas
 
 ```sql
--- =============================================
--- AGUA BLANCA SEAFOODS - DATABASE SETUP v2.0
--- =============================================
+CREATE TABLE oficinas (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  codigo VARCHAR,
+  direccion TEXT,
+  telefono VARCHAR,
+  responsable_principal_id BIGINT REFERENCES responsables(id),
+  activa BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
 
--- Habilitar extensiones necesarias
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- Para búsqueda de texto
+### `responsables` - Catálogo de Responsables
 
--- Crear ENUMs
-CREATE TYPE user_role AS ENUM ('admin', 'responsable', 'readonly');
+```sql
+CREATE TABLE responsables (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL
+  -- [estructura completa no proporcionada en el esquema]
+);
+```
+
+### `regiones_mercado` - Catálogo de Regiones
+
+```sql
+CREATE TABLE regiones_mercado (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  descripcion TEXT,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### `precios_camaron` - Tabla de Precios Automáticos
+
+```sql
+CREATE TABLE precios_camaron (
+  id INTEGER PRIMARY KEY DEFAULT nextval('precios_camaron_id_seq'),
+  talla_camaron_id INTEGER NOT NULL REFERENCES tallas_camaron(id),
+  peso_min_gramos NUMERIC NOT NULL,
+  peso_max_gramos NUMERIC NOT NULL,
+  conteo_min_kilo INTEGER NOT NULL,
+  conteo_max_kilo INTEGER NOT NULL,
+  precio_mayorista NUMERIC NOT NULL,
+  precio_restaurante NUMERIC NOT NULL,
+  precio_menudeo NUMERIC NOT NULL,
+  cantidad_min_mayorista NUMERIC DEFAULT 150.000,
+  activo BOOLEAN DEFAULT true,
+
+  -- Auditoría
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT DEFAULT 'system',
+  updated_by TEXT DEFAULT 'system'
+);
+```
+
+---
+
+## 💰 Tablas de Pagos y Facturación
+
+### `metodos_pago` - Métodos de Pago
+
+```sql
+CREATE TABLE metodos_pago (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  descripcion TEXT,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### `formas_pago` - Formas de Pago
+
+```sql
+CREATE TABLE formas_pago (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  descripcion TEXT,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### `estatus_pago` - Estado del Pago
+
+```sql
+CREATE TABLE estatus_pago (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  descripcion TEXT,
+  color VARCHAR DEFAULT '#6B7280',
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### `estatus_factura` - Estado de Facturación
+
+```sql
+CREATE TABLE estatus_factura (
+  id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  nombre VARCHAR NOT NULL,
+  descripcion TEXT,
+  activo BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## 🔗 Relaciones Clave
+
+### Flujo Principal de Datos:
+
+1. **Cosechas → Cosecha_Tallas**: Una cosecha puede tener múltiples tallas
+2. **Cosechas → Cosecha_Estanques**: Una cosecha puede venir de múltiples estanques
+3. **Ventas → Cosechas**: Una venta está vinculada a una cosecha específica
+4. **Ventas → Tallas_Camaron**: Una venta tiene una talla específica (tomada de la cosecha)
+5. **Precios_Camaron → Tallas_Camaron**: Los precios automáticos se basan en la talla
+
+### Sistema de Precios Automáticos:
+
+```
+Cosecha → obtener talla predominante → buscar precio en precios_camaron → aplicar según tipo_cliente
+```
+
+---
+
+## 📈 Vistas Importantes
+
+### `cosechas_inventario_detallado` - Vista de Inventario de Cosechas
+
+Esta vista consolida información de cosechas con su inventario disponible:
+
+- Peso total, vendido y disponible
+- Porcentaje vendido
+- Estado del inventario (disponible/parcial/agotado)
+- Detalles de estanques y tallas en formato texto
+
+---
+
+## 🎯 Funcionalidades Implementadas
+
+### ✅ Sistema de Precios Automáticos
+- Cálculo automático basado en talla y tipo de cliente
+- Reglas de negocio: Mayorista ≥150kg, Restaurante, Menudeo
+- Integración con formulario de ventas
+
+### ✅ Gestión de Cosechas
+- Registro de cosechas con múltiples estanques y tallas
+- Seguimiento de inventario disponible
+- Control de peso vendido vs disponible
+
+### ✅ Sistema de Ventas
+- Registro completo con datos administrativos, cliente y producto
+- Columnas calculadas automáticamente (monto_venta, total_orden)
+- Vinculación automática de talla desde cosecha seleccionada
+
+### ✅ Reportes y Análisis
+- Vista consolidada de ventas con filtros por fecha
+- Análisis por producto, oficina, región y talla
+- Indicadores de rendimiento en tiempo real
+
+---
+
+## 🚀 Próximas Mejoras
+
+### 🔄 Pendientes de Implementación
+1. **Ambientes separados** (desarrollo vs producción)
+2. **Vista de administración de precios** para gestionar precios_camaron
+3. **Histórico de cambios de precios**
+4. **Integración con sistema de facturación externa**
+5. **Dashboard ejecutivo con métricas clave**
+
+---
+
+## 📋 Tipos de Datos Personalizados
+
+### ENUMs Utilizados
+
+```sql
+-- Estado de cosechas
 CREATE TYPE cosecha_estado AS ENUM ('pendiente', 'procesada', 'vendida');
-
--- PASO 1: Crear todas las tablas de catálogo
--- [Incluir todos los CREATE TABLE de catálogos del archivo original]
-
--- PASO 2: Crear tabla de clientes ACTUALIZADA
--- [Incluir el CREATE TABLE clientes actualizado de arriba]
-
--- PASO 3: Crear tabla de ventas con campos calculados
--- [Incluir el CREATE TABLE ventas actualizado]
-
--- PASO 4: Insertar datos iniciales COMPLETOS
--- [Incluir todos los INSERT de clientes MV y ALV]
-
--- PASO 5: Crear índices optimizados
-CREATE INDEX idx_clientes_nombre_trgm ON clientes USING gin(nombre gin_trgm_ops);
-CREATE INDEX idx_clientes_oficina ON clientes(oficina);
-CREATE INDEX idx_clientes_activo ON clientes(activo);
-
--- PASO 6: Crear vista de autocomplete
--- [Incluir CREATE VIEW clientes_autocomplete]
 ```
 
-## ✅ **Checklist de Implementación Actualizado**
+---
 
-### ⚠️ **CRÍTICO - Implementar Ahora:**
-- [ ] Crear tabla `clientes` con columna `oficina`
-- [ ] Insertar TODOS los clientes MV y ALV (150+ registros)
-- [ ] Crear índices para búsqueda rápida de texto
-- [ ] Configurar RLS para clientes
-- [ ] Probar autocomplete con datos reales
+## 🔍 Estado Actual del Sistema
 
-### 📋 **Recomendado - Siguiente Fase:**
-- [ ] Migrar de localStorage a Supabase
-- [ ] Implementar autenticación
-- [ ] Configurar políticas de acceso por oficina
-- [ ] Optimizar consultas de reportes
+### ✅ **Funcionando Correctamente:**
+- Sistema de precios automáticos con cálculo en tiempo real
+- Registro de cosechas con múltiples tallas y estanques
+- Formulario de ventas con vinculación automática de tallas
+- Reportes con selector de fecha moderno (dropdown)
+- Gestión de inventario de cosechas
 
-## 🚨 **Notas Críticas para la Implementación**
+### 🔄 **En Desarrollo:**
+- Configuración de ambientes dev/prod
+- Vista de administración de precios
 
-1. **DUPLICADOS**: Jorge Gamboa y Lamarca aparecen en ambas oficinas (MV y ALV). La columna `oficina` resuelve esto.
-2. **CAMPOS CALCULADOS**: Los campos `descuento_calculado` y `total_orden` deben ser GENERATED ALWAYS para consistencia.
-3. **BÚSQUEDA**: El índice `gin_trgm_ops` es crucial para el autocomplete rápido.
-4. **MIGRACIÓN**: El actual sistema usa localStorage - necesitas migrar gradualmente a Supabase.
+### 📋 **Notas Técnicas:**
+- **Columnas generadas**: `monto_venta` y `total_orden` se calculan automáticamente
+- **Relación tallas**: Se obtiene dinámicamente de `cosecha_tallas` al seleccionar cosecha
+- **Precios dinámicos**: Basados en talla + tipo cliente + cantidad
+- **Vista inventario**: `cosechas_inventario_detallado` proporciona información consolidada
 
-**La estructura está lista para implementación inmediata en Supabase.**
+---
+
+*Este documento refleja la estructura real implementada en Supabase al 21 de octubre de 2025.*

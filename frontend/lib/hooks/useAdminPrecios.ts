@@ -91,6 +91,25 @@ export function useAdminPrecios() {
       setIsUpdating(true);
       console.log(`💰 Actualizando precios para ID ${precioId}:`, formData);
 
+      // Primero verificar que el registro existe
+      const { data: existingRecord, error: checkError } = await supabase
+        .from('precios_camaron')
+        .select('id, precio_mayorista, precio_restaurante, precio_menudeo')
+        .eq('id', precioId)
+        .single();
+
+      if (checkError) {
+        console.error('❌ Error verificando registro existente:', checkError);
+        return false;
+      }
+
+      if (!existingRecord) {
+        console.error('❌ No se encontró el registro con ID:', precioId);
+        return false;
+      }
+
+      console.log('✅ Registro encontrado:', existingRecord);
+
       const { data, error } = await supabase
         .from('precios_camaron')
         .update({
@@ -98,9 +117,7 @@ export function useAdminPrecios() {
           precio_restaurante: formData.precio_restaurante,
           precio_menudeo: formData.precio_menudeo,
           cantidad_min_mayorista: formData.cantidad_min_mayorista,
-          activo: formData.activo,
-          updated_at: new Date().toISOString(),
-          updated_by: 'admin' // TODO: Usar usuario real cuando tengamos auth
+          activo: formData.activo
         })
         .eq('id', precioId)
         .select();

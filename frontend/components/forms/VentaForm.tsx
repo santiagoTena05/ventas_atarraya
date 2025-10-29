@@ -32,9 +32,11 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [clients, setClients] = useState<{ id: number; name: string }[]>([]);
   const [oficinas, setOficinas] = useState<{ id: number; name: string }[]>([]);
+  const [responsables, setResponsables] = useState<{ id: number; name: string }[]>([]);
   const [tiposCliente, setTiposCliente] = useState<{ id: number; name: string }[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(true);
   const [isLoadingOficinas, setIsLoadingOficinas] = useState(true);
+  const [isLoadingResponsables, setIsLoadingResponsables] = useState(true);
   const [isLoadingTiposCliente, setIsLoadingTiposCliente] = useState(true);
   const [isAddClientDialogOpen, setIsAddClientDialogOpen] = useState(false);
   const [selectedCosecha, setSelectedCosecha] = useState<unknown>(null);
@@ -134,6 +136,45 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
     };
 
     loadOficinas();
+  }, []);
+
+  // Cargar responsables desde Supabase
+  useEffect(() => {
+    const loadResponsables = async () => {
+      try {
+        setIsLoadingResponsables(true);
+        console.log('🔄 Cargando responsables desde Supabase...');
+
+        const { data, error } = await supabase
+          .from('responsables')
+          .select('id, nombre')
+          .order('nombre');
+
+        if (error) {
+          console.error('❌ Error cargando responsables:', error);
+          // Fallback a datos mock si hay error
+          setResponsables(mockData.responsables);
+          console.log('📋 Usando datos mock de responsables como fallback');
+        } else {
+          // Transformar datos para coincidir con la interfaz esperada
+          const transformedResponsables = data.map(responsable => ({
+            id: responsable.id,
+            name: responsable.nombre
+          }));
+          setResponsables(transformedResponsables);
+          console.log(`✅ Responsables cargados exitosamente: ${transformedResponsables.length} responsables`);
+        }
+      } catch (error) {
+        console.error('❌ Error cargando responsables:', error);
+        // Fallback a datos mock si hay error
+        setResponsables(mockData.responsables);
+        console.log('📋 Usando datos mock de responsables como fallback');
+      } finally {
+        setIsLoadingResponsables(false);
+      }
+    };
+
+    loadResponsables();
   }, []);
 
   // Cargar tipos de cliente desde Supabase
@@ -525,10 +566,10 @@ export function VentaForm({ salesHook, onSaleRegistered }: VentaFormProps) {
                   </Label>
                   <Select onValueChange={(value) => setValue("responsable", value)}>
                     <SelectTrigger className="border-gray-300 focus:border-gray-900 focus:ring-gray-900">
-                      <SelectValue placeholder="Seleccionar responsable" />
+                      <SelectValue placeholder={isLoadingResponsables ? "Cargando responsables..." : "Seleccionar responsable"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockData.responsables.map((responsable) => (
+                      {responsables.map((responsable) => (
                         <SelectItem key={responsable.id} value={responsable.name}>
                           {responsable.name}
                         </SelectItem>
