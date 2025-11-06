@@ -10,7 +10,8 @@ import {
   MapPin,
   UserCheck,
   Ruler,
-  Package
+  Package,
+  Droplets
 } from "lucide-react";
 
 import { AdminPreciosView } from "./AdminPreciosView";
@@ -19,8 +20,9 @@ import { AdminOficinasView } from "./AdminOficinasView";
 import { AdminRegionesView } from "./AdminRegionesView";
 import { AdminClientesView } from "./AdminClientesView";
 import { AdminTallasView } from "./AdminTallasView";
+import { AdminEstanquesView } from "./AdminEstanquesView";
 
-type AdminSection = 'precios' | 'responsables' | 'oficinas' | 'regiones' | 'clientes' | 'tallas';
+type AdminSection = 'precios' | 'responsables' | 'oficinas' | 'regiones' | 'clientes' | 'tallas' | 'estanques';
 
 const adminSections = [
   {
@@ -57,6 +59,13 @@ const adminSections = [
     icon: MapPin,
     description: 'Gestionar regiones y zonas de mercado',
     color: 'bg-indigo-600 hover:bg-indigo-700'
+  },
+  {
+    id: 'estanques' as AdminSection,
+    name: 'Estanques',
+    icon: Droplets,
+    description: 'Administrar estanques de cultivo y sus características',
+    color: 'bg-cyan-600 hover:bg-cyan-700'
   }
 ];
 
@@ -77,6 +86,8 @@ export function AdminView() {
         return <AdminRegionesView />;
       case 'clientes':
         return <AdminClientesView />;
+      case 'estanques':
+        return <AdminEstanquesView />;
       default:
         return null;
     }

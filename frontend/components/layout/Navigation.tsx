@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart } from "lucide-react";
+import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart, Droplets } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface NavigationProps {
-  currentView: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'admin';
-  onViewChange: (view: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'admin') => void;
+  currentView: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'inventario-vivo' | 'inventario-vivo-table' | 'inventario-generaciones' | 'inventario-calculos' | 'admin';
+  onViewChange: (view: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'inventario-vivo' | 'inventario-vivo-table' | 'inventario-generaciones' | 'inventario-calculos' | 'admin') => void;
 }
 
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
@@ -91,6 +91,37 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
               <ShoppingCart className="h-4 w-4" />
               Pedidos
             </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={(currentView === 'inventario-vivo' || currentView === 'inventario-vivo-table' || currentView === 'inventario-generaciones' || currentView === 'inventario-calculos') ? 'default' : 'outline'}
+                  className={`flex items-center gap-2 ${
+                    (currentView === 'inventario-vivo' || currentView === 'inventario-vivo-table' || currentView === 'inventario-generaciones' || currentView === 'inventario-calculos')
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Droplets className="h-4 w-4" />
+                  Inventario Vivo
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onViewChange('inventario-vivo')}>
+                  Registrar Muestreos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewChange('inventario-generaciones')}>
+                  Vista por Generaciones
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewChange('inventario-calculos')}>
+                  Vista de Cálculos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onViewChange('inventario-vivo-table')}>
+                  Ver Historial
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

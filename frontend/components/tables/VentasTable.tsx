@@ -38,7 +38,7 @@ export function VentasTable({ salesHook }: VentasTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingSaleId, setEditingSaleId] = useState<number | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const { sales, isLoading } = salesHook;
 
@@ -101,6 +101,64 @@ export function VentasTable({ salesHook }: VentasTableProps) {
     setCurrentPage(1);
   };
 
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value));
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
+
+  const handleExport = () => {
+    // Crear headers del CSV
+    const headers = [
+      'Folio',
+      'Oficina',
+      'Responsable',
+      'Cliente',
+      'Tipo Cliente',
+      'Fecha Entrega',
+      'Producto',
+      'Talla',
+      'Kilos',
+      'Precio/Kg',
+      'Total Orden',
+      'Estatus Pago'
+    ];
+
+    // Convertir datos a formato CSV
+    const csvData = filteredSales.map(sale => [
+      `#${sale.folio.toString().padStart(4, '0')}`,
+      sale.oficina,
+      sale.responsable,
+      sale.cliente,
+      sale.tipoCliente,
+      formatDate(sale.fechaEntrega),
+      sale.tipoProducto,
+      sale.tallaCamaron || '-',
+      sale.enteroKgs.toFixed(3),
+      formatCurrency(sale.precioVenta),
+      formatCurrency(sale.totalOrden),
+      sale.estatusPagoCliente
+    ]);
+
+    // Combinar headers y datos
+    const csvContent = [headers, ...csvData]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    // Crear y descargar archivo
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `ventas_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   const handleEditSale = (saleId: number) => {
     setEditingSaleId(saleId);
     setIsEditDialogOpen(true);
@@ -138,7 +196,11 @@ export function VentasTable({ salesHook }: VentasTableProps) {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={handleExport}
+              >
                 <Download className="h-4 w-4" />
                 Exportar
               </Button>
@@ -327,11 +389,29 @@ export function VentasTable({ salesHook }: VentasTableProps) {
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
+          <div className="flex items-center justify-between mt-6">
+            <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">
                 Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredSales.length)} de {filteredSales.length} resultados
               </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-medium text-gray-600">
+                  Mostrar:
+                </Label>
+                <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                  <SelectTrigger className="w-20 h-8 border-gray-300 focus:border-gray-900 focus:ring-gray-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {totalPages > 1 && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -382,8 +462,8 @@ export function VentasTable({ salesHook }: VentasTableProps) {
                   Siguiente
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Summary */}
           <div className="mt-6 pt-6 border-t border-gray-200">

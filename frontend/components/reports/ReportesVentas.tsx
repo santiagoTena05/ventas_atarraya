@@ -239,6 +239,50 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
       {/* Selector de Rango de Fechas */}
       <DateRangeSelector onDateRangeChange={handleDateRangeChange} />
 
+      {/* Resumen estadístico */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="bg-teal-50">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-teal-600">
+                {ventasFiltradas.length}
+              </div>
+              <div className="text-sm text-teal-800">Total Ventas</div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-blue-50">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {formatCurrency(ventasFiltradas.reduce((sum, venta) => sum + venta.totalOrden, 0))}
+              </div>
+              <div className="text-sm text-blue-800">Monto Total</div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-green-50">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {formatNumber(ventasFiltradas.reduce((sum, venta) => sum + venta.enteroKgs, 0))} kg
+              </div>
+              <div className="text-sm text-green-800">Total Kilos</div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-orange-50">
+          <CardContent className="p-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {formatCurrency(ventasFiltradas.length > 0 ? ventasFiltradas.reduce((sum, venta) => sum + venta.totalOrden, 0) / ventasFiltradas.length : 0)}
+              </div>
+              <div className="text-sm text-orange-800">Precio Promedio</div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Grid principal - Fila superior */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
@@ -471,50 +515,6 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
                   <Bar dataKey="pad" name="PAD" fill="#17a2b8" />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Resumen estadístico */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-teal-50">
-          <CardContent className="p-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-teal-600">
-                {ventasFiltradas.length}
-              </div>
-              <div className="text-sm text-teal-800">Total Ventas</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-blue-50">
-          <CardContent className="p-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">
-                {formatCurrency(ventasFiltradas.reduce((sum, venta) => sum + venta.totalOrden, 0))}
-              </div>
-              <div className="text-sm text-blue-800">Monto Total</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-green-50">
-          <CardContent className="p-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
-                {formatNumber(ventasFiltradas.reduce((sum, venta) => sum + venta.enteroKgs, 0))} kg
-              </div>
-              <div className="text-sm text-green-800">Total Kilos</div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-orange-50">
-          <CardContent className="p-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {formatCurrency(ventasFiltradas.length > 0 ? ventasFiltradas.reduce((sum, venta) => sum + venta.totalOrden, 0) / ventasFiltradas.length : 0)}
-              </div>
-              <div className="text-sm text-orange-800">Precio Promedio</div>
             </div>
           </CardContent>
         </Card>

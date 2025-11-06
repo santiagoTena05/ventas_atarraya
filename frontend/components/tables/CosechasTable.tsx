@@ -33,7 +33,7 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterResponsable, setFilterResponsable] = useState("todos");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const { cosechas, isLoading } = cosechasHook;
 
@@ -82,6 +82,62 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
     setCurrentPage(1);
   };
 
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value));
+    setCurrentPage(1); // Reset to first page when changing items per page
+  };
+
+  const handleExport = () => {
+    // Crear headers del CSV
+    const headers = [
+      'Folio',
+      'Responsable',
+      'Oficina',
+      'Fecha Cosecha',
+      'Peso Total (kg)',
+      'Estanques',
+      'Tallas',
+      'Estado Pedido',
+      'Cliente Pedido',
+      'Producto Pedido',
+      'Talla Pedido'
+    ];
+
+    // Convertir datos a formato CSV
+    const csvData = filteredCosechas.map(cosecha => [
+      `#${cosecha.folio.toString().padStart(4, '0')}`,
+      cosecha.responsable,
+      cosecha.oficina,
+      formatDate(cosecha.fechaCosecha),
+      formatKg(cosecha.pesoTotalKg),
+      cosecha.estanques.map(est => `${est.nombre}: ${formatKg(est.pesoKg)}`).join('; '),
+      cosecha.tallas.map(talla => `${talla.nombre}: ${formatKg(talla.pesoKg)}`).join('; '),
+      cosecha.pedidoInfo?.estatus || 'Sin pedido',
+      cosecha.pedidoInfo?.cliente || '-',
+      cosecha.pedidoInfo?.producto || '-',
+      cosecha.pedidoInfo?.talla || '-'
+    ]);
+
+    // Combinar headers y datos
+    const csvContent = [headers, ...csvData]
+      .map(row => row.map(cell => `"${cell}"`).join(','))
+      .join('\n');
+
+    // Crear y descargar archivo
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `cosechas_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   const handleViewDetails = (cosechaId: number) => {
     console.log("Ver detalles de cosecha:", cosechaId);
     // TODO: Implementar modal de detalles
@@ -115,7 +171,11 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="flex items-center gap-2"
+                onClick={handleExport}
+              >
                 <Download className="h-4 w-4" />
                 Exportar
               </Button>
@@ -290,11 +350,29 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
+          <div className="flex items-center justify-between mt-6">
+            <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">
                 Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredCosechas.length)} de {filteredCosechas.length} resultados
               </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs font-medium text-gray-600">
+                  Mostrar:
+                </Label>
+                <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                  <SelectTrigger className="w-20 h-8 border-gray-300 focus:border-gray-900 focus:ring-gray-900">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {totalPages > 1 && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -345,8 +423,8 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
                   Siguiente
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Summary */}
           <div className="mt-6 pt-6 border-t border-gray-200">

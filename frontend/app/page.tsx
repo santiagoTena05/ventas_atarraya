@@ -15,12 +15,16 @@ import { EstadosCuentaMVTabla } from "@/components/reports/EstadosCuentaMVTabla"
 import { EstadosCuentaALVTabla } from "@/components/reports/EstadosCuentaALVTabla";
 import { EstadosCuentaALVResumen } from "@/components/reports/EstadosCuentaALVResumen";
 import { AdminView } from "@/components/admin/AdminView";
+import { InventarioVivoView } from "@/components/views/InventarioVivoView";
+import { InventarioVivoTable } from "@/components/tables/InventarioVivoTable";
+import { InventarioGeneracionesView } from "@/components/views/InventarioGeneracionesView";
+import { InventarioCalculosView } from "@/components/views/InventarioCalculosView";
 import { Navigation } from "@/components/layout/Navigation";
 import { useSales } from "@/lib/hooks/useSales";
 import { useCosechas } from "@/lib/hooks/useCosechas";
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'admin'>('form');
+  const [currentView, setCurrentView] = useState<'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'inventario-vivo' | 'inventario-vivo-table' | 'inventario-generaciones' | 'inventario-calculos' | 'admin'>('form');
   const salesHook = useSales();
   const cosechasHook = useCosechas();
 
@@ -45,6 +49,14 @@ export default function Home() {
           <CosechasTable cosechasHook={cosechasHook} />
         ) : currentView === 'pedidos' ? (
           <PedidosView />
+        ) : currentView === 'inventario-vivo' ? (
+          <InventarioVivoView />
+        ) : currentView === 'inventario-vivo-table' ? (
+          <InventarioVivoTable />
+        ) : currentView === 'inventario-generaciones' ? (
+          <InventarioGeneracionesView />
+        ) : currentView === 'inventario-calculos' ? (
+          <InventarioCalculosView />
         ) : currentView === 'resumen1' ? (
           <ResumenCuentas salesHook={salesHook} />
         ) : currentView === 'resumen2' ? (
