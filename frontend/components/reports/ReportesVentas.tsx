@@ -17,6 +17,9 @@ import {
   Cell,
   Legend
 } from 'recharts';
+import { EvolucionVentas } from "./EvolucionVentas";
+import { MediosPago } from "./MediosPago";
+import { TiposCliente } from "./TiposCliente";
 
 interface ReportesVentasProps {
   salesHook: ReturnType<typeof useSales>;
@@ -281,6 +284,15 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Evolución de Ventas */}
+      <EvolucionVentas salesHook={salesHook} dateRange={dateRange} />
+
+      {/* Gráficos lado a lado - Medios de Pago y Tipos de Cliente */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <MediosPago salesHook={salesHook} dateRange={dateRange} />
+        <TiposCliente salesHook={salesHook} dateRange={dateRange} />
       </div>
 
       {/* Grid principal - Fila superior */}

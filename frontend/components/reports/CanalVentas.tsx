@@ -217,6 +217,28 @@ export function CanalVentas({ salesHook }: CanalVentasProps) {
         <DateRangeSelector onDateRangeChange={handleDateRangeChange} />
       </div>
 
+      {/* Información adicional - Insights */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-teal-50 rounded-lg p-4">
+          <h4 className="font-semibold text-teal-800">Total Entero</h4>
+          <p className="text-2xl font-bold text-teal-600">
+            {formatCurrency(datosProducto.reduce((sum, item) => sum + item.entero, 0))}
+          </p>
+        </div>
+        <div className="bg-blue-50 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-800">Total PAD</h4>
+          <p className="text-2xl font-bold text-blue-600">
+            {formatCurrency(datosProducto.reduce((sum, item) => sum + item.pad, 0))}
+          </p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-4">
+          <h4 className="font-semibold text-gray-800">Total General</h4>
+          <p className="text-2xl font-bold text-gray-600">
+            {formatCurrency(datosProducto.reduce((sum, item) => sum + item.total, 0))}
+          </p>
+        </div>
+      </div>
+
       {/* Grid principal con 4 secciones */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
@@ -390,28 +412,6 @@ export function CanalVentas({ salesHook }: CanalVentasProps) {
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-
-      {/* Información adicional */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-teal-50 rounded-lg p-4">
-          <h4 className="font-semibold text-teal-800">Total Entero</h4>
-          <p className="text-2xl font-bold text-teal-600">
-            {formatCurrency(datosProducto.reduce((sum, item) => sum + item.entero, 0))}
-          </p>
-        </div>
-        <div className="bg-blue-50 rounded-lg p-4">
-          <h4 className="font-semibold text-blue-800">Total PAD</h4>
-          <p className="text-2xl font-bold text-blue-600">
-            {formatCurrency(datosProducto.reduce((sum, item) => sum + item.pad, 0))}
-          </p>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-4">
-          <h4 className="font-semibold text-gray-800">Total General</h4>
-          <p className="text-2xl font-bold text-gray-600">
-            {formatCurrency(datosProducto.reduce((sum, item) => sum + item.total, 0))}
-          </p>
         </div>
       </div>
     </div>

@@ -23,11 +23,8 @@ import {
   Download,
   ArrowUpDown
 } from "lucide-react";
+import { formatNumber, formatWeight, formatCurrency } from "@/lib/utils/formatters";
 
-// Función para formatear números con comas
-const formatNumber = (num: number): string => {
-  return num.toLocaleString('en-US', { maximumFractionDigits: 3 });
-};
 
 interface CalculoCompleto {
   id: string;
@@ -46,50 +43,6 @@ interface CalculoCompleto {
   estado: 'activo' | 'cosecha' | 'preparacion';
 }
 
-// Función para generar datos de cálculos completos
-const generarCalculosCompletos = (estanques: any[]): CalculoCompleto[] => {
-  const calculos: CalculoCompleto[] = [];
-
-  estanques.slice(0, 8).forEach((estanque, idx) => {
-    const ciclo = 59 + Math.floor(idx / 3);
-    const semanasCultivo = 10 + Math.floor(Math.random() * 15);
-    const averageSize = 10 + (idx * 1.5) + Math.random() * 3;
-    const growth = 1.0 + (Math.random() * 1.5);
-    const area = estanque.area || 540;
-
-    // Cálculos simulados
-    const population = 15000 + Math.floor(Math.random() * 20000);
-    const survivalRate = 0.4 + (Math.random() * 0.4);
-    const biomass = (averageSize * population * survivalRate) / 1000; // kg
-    const biomassIncrease = Math.random() * 100;
-    const productivity = biomass / area;
-    const harvested = Math.random() > 0.6 ? Math.floor(Math.random() * 500) : 0;
-    const hWeek = harvested > 0 ? semanasCultivo : 0;
-
-    let estado: 'activo' | 'cosecha' | 'preparacion' = 'activo';
-    if (harvested > 0) estado = 'cosecha';
-    else if (Math.random() > 0.8) estado = 'preparacion';
-
-    calculos.push({
-      id: `${ciclo}-${estanque.id}`,
-      ciclo,
-      tank: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
-      averageSize,
-      growth,
-      biomass,
-      biomassIncrease,
-      population,
-      survivalRates: survivalRate,
-      productivity,
-      cultureWeeks: semanasCultivo,
-      harvested,
-      hWeek,
-      estado
-    });
-  });
-
-  return calculos.sort((a, b) => a.ciclo - b.ciclo || a.tank.localeCompare(b.tank));
-};
 
 type SortField = 'ciclo' | 'tank' | 'averageSize' | 'biomass' | 'population' | 'productivity';
 type SortDirection = 'asc' | 'desc';
@@ -105,69 +58,89 @@ export function InventarioCalculosView() {
 
   // Generar datos cuando se cargan los estanques y muestreos
   React.useEffect(() => {
-    if (estanquesSupabase.length > 0) {
-      if (sesiones.length > 0) {
-        // Usar datos reales de muestreos para generar cálculos
-        const calculosReales: CalculoCompleto[] = [];
-        const generaciones = obtenerGeneraciones();
+    if (estanquesSupabase.length > 0 && sesiones.length > 0) {
+      // Usar datos reales de muestreos para generar cálculos
+      const calculosReales: CalculoCompleto[] = [];
+      const generacionesSet = new Set(sesiones.map(s => s.generacion));
+      const generaciones = Array.from(generacionesSet).sort();
 
-        estanquesSupabase.forEach((estanque) => {
-          generaciones.forEach((generacion, genIdx) => {
-            const sesionesEstanque = sesiones.filter(s =>
+      estanquesSupabase.forEach((estanque) => {
+        generaciones.forEach((generacion) => {
+          const sesionesEstanque = sesiones
+            .filter(s =>
               s.generacion === generacion &&
               s.muestreos[estanque.id.toString()]
-            );
+            )
+            .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
 
-            if (sesionesEstanque.length > 0) {
-              const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
-              const muestreo = sesionReciente.muestreos[estanque.id.toString()];
+          if (sesionesEstanque.length > 0) {
+            const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
+            const muestreo = sesionReciente.muestreos[estanque.id.toString()];
 
-              // Extraer número de generación para calcular ciclo
-              const numeroGeneracion = parseInt(generacion.replace('G-', ''));
-              const ciclo = numeroGeneracion;
+            // Extraer número de generación para calcular ciclo
+            const numeroGeneracion = parseInt(generacion.replace('G-', ''));
+            const ciclo = numeroGeneracion;
 
-              // Calcular métricas basadas en datos reales
-              const averageSize = muestreo.promedio;
-              const biomass = muestreo.biomasa;
-              const area = estanque.area || 540;
-              const productivity = biomass / area;
+            // Calcular métricas basadas en datos reales
+            const averageSize = muestreo.promedio || 0;
+            const biomass = muestreo.biomasa || 0;
+            const area = estanque.area || 540;
+            const productivity = biomass / area;
 
-              // Estimaciones adicionales
-              const population = Math.round((biomass * 1000) / averageSize);
-              const survivalRate = Math.min(0.9, 0.3 + (productivity * 0.5));
-              const growth = averageSize > 0 ? Math.max(0.5, averageSize / 10) : 1.0;
-              const cultureWeeks = Math.floor(8 + (numeroGeneracion - 60) * 2);
-
-              let estado: 'activo' | 'cosecha' | 'preparacion' = 'activo';
-              if (averageSize > 15) estado = 'cosecha';
-              else if (averageSize < 5) estado = 'preparacion';
-
-              calculosReales.push({
-                id: `${ciclo}-${estanque.id}`,
-                ciclo,
-                tank: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
-                averageSize,
-                growth,
-                biomass,
-                biomassIncrease: 0, // TODO: calcular basado en muestreos anteriores
-                population,
-                survivalRates: survivalRate,
-                productivity,
-                cultureWeeks,
-                harvested: 0, // TODO: integrar con datos de cosecha
-                hWeek: 0,
-                estado
-              });
+            // Calcular biomass increase basado en sesiones anteriores
+            let biomassIncrease = 0;
+            if (sesionesEstanque.length > 1) {
+              const sesionAnterior = sesionesEstanque[sesionesEstanque.length - 2];
+              const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
+              if (muestreoAnterior) {
+                biomassIncrease = biomass - (muestreoAnterior.biomasa || 0);
+              }
             }
-          });
-        });
 
-        setCalculos(calculosReales.sort((a, b) => a.ciclo - b.ciclo || a.tank.localeCompare(b.tank)));
-      } else {
-        // Usar datos mock si no hay muestreos registrados
-        const calculosMock = generarCalculosCompletos(estanquesSupabase);
-        setCalculos(calculosMock);
-      }
+            // Estimaciones adicionales
+            const population = averageSize > 0 ? Math.round((biomass * 1000) / averageSize) : 0;
+            const survivalRate = Math.min(0.9, Math.max(0.3, 0.3 + (productivity * 0.3)));
+            const growth = averageSize > 0 ? Math.max(0.5, averageSize / 15) : 1.0;
+
+            // Calcular semanas de cultivo basado en semana de la sesión
+            const cultureWeeks = sesionReciente.semana || Math.floor(8 + (numeroGeneracion - 60) * 2);
+
+            // Integrar datos de cosecha reales
+            const harvested = muestreo.cosecha || 0;
+            const hWeek = harvested > 0 ? cultureWeeks : 0;
+
+            // Determinar estado basado en métricas reales
+            let estado: 'activo' | 'cosecha' | 'preparacion' = 'activo';
+            if (harvested > 0 || averageSize > 20) {
+              estado = 'cosecha';
+            } else if (averageSize < 8 || cultureWeeks < 4) {
+              estado = 'preparacion';
+            }
+
+            calculosReales.push({
+              id: `${ciclo}-${estanque.id}`,
+              ciclo,
+              tank: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
+              averageSize,
+              growth,
+              biomass,
+              biomassIncrease,
+              population,
+              survivalRates: survivalRate,
+              productivity,
+              cultureWeeks,
+              harvested,
+              hWeek,
+              estado
+            });
+          }
+        });
+      });
+
+      setCalculos(calculosReales.sort((a, b) => a.ciclo - b.ciclo || a.tank.localeCompare(b.tank)));
+    } else {
+      // Mostrar array vacío si no hay datos
+      setCalculos([]);
     }
   }, [estanquesSupabase, sesiones]);
 
@@ -313,7 +286,7 @@ export function InventarioCalculosView() {
           </p>
           {sesiones.length === 0 && (
             <p className="text-xs text-amber-600 mt-1">
-              📋 Mostrando datos de ejemplo - Registra muestreos para ver datos reales
+              📋 No hay muestreos registrados - Ve a Inventario Vivo para registrar datos
             </p>
           )}
         </div>
@@ -332,7 +305,7 @@ export function InventarioCalculosView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Biomasa Total</p>
-                <p className="text-2xl font-bold text-green-600">{formatNumber(totales.biomasa)} kg</p>
+                <p className="text-2xl font-bold text-green-600">{formatWeight(totales.biomasa)} kg</p>
               </div>
               <TrendingUp className="h-6 w-6 text-green-600" />
             </div>
@@ -356,7 +329,7 @@ export function InventarioCalculosView() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Cosechado</p>
-                <p className="text-2xl font-bold text-yellow-600">{formatNumber(totales.cosechado)} kg</p>
+                <p className="text-2xl font-bold text-yellow-600">{formatWeight(totales.cosechado)} kg</p>
               </div>
               <Calculator className="h-6 w-6 text-yellow-600" />
             </div>
@@ -536,10 +509,10 @@ export function InventarioCalculosView() {
                       {formatNumber(calculo.growth)}
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatNumber(calculo.biomass)}
+                      {formatWeight(calculo.biomass)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatNumber(calculo.biomassIncrease)}
+                      {formatWeight(calculo.biomassIncrease)}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatNumber(calculo.population)}
@@ -587,8 +560,12 @@ export function InventarioCalculosView() {
               <div className="text-center py-8">
                 <div className="text-gray-500">
                   <Calculator className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">No hay datos</p>
-                  <p className="text-sm">No se encontraron registros con los filtros aplicados</p>
+                  <p className="text-lg font-medium">No hay datos para mostrar</p>
+                  {sesiones.length === 0 ? (
+                    <p className="text-sm">Registra muestreos en Inventario Vivo para ver cálculos detallados</p>
+                  ) : (
+                    <p className="text-sm">No se encontraron registros con los filtros aplicados</p>
+                  )}
                 </div>
               </div>
             )}

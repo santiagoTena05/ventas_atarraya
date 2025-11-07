@@ -25,11 +25,8 @@ import {
   Plus,
   Minus
 } from "lucide-react";
+import { formatNumber, formatWeight } from "@/lib/utils/formatters";
 
-// Función para formatear números con comas
-const formatNumber = (num: number): string => {
-  return num.toLocaleString('en-US', { maximumFractionDigits: 3 });
-};
 
 interface EstanqueData {
   estanqueId: number;
@@ -42,49 +39,18 @@ interface EstanqueData {
   cosechaSemanal: number;
 }
 
-// Función para generar datos mock por estanque
-const generarDatosPorEstanque = (estanques: any[], generacionSeleccionada: string): EstanqueData[] => {
-  const datos: EstanqueData[] = [];
-
-  estanques.slice(0, 8).forEach((estanque, estIdx) => {
-    // Generar 9 lances (muestreos) por estanque
-    const baseLance = 100 + (estIdx * 20);
-    const lances = Array.from({ length: 9 }, (_, i) =>
-      baseLance + Math.floor(Math.random() * 50) + (i * 5)
-    );
-
-    const mediana = [...lances].sort((a, b) => a - b)[4]; // Mediana real
-    const area = estanque.area || 540;
-    const estimacionActual = (mediana / 1000) * area;
-    const estimacionAnterior = Math.random() > 0.5 ? estimacionActual - (Math.random() * 20 + 5) : undefined;
-    const ganancia = estimacionAnterior ? estimacionActual - estimacionAnterior : undefined;
-
-    datos.push({
-      estanqueId: estanque.id,
-      estanque: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
-      lances,
-      mediana,
-      estimacionActual,
-      estimacionAnterior,
-      ganancia,
-      cosechaSemanal: Math.random() > 0.7 ? Math.random() * 15 : 0
-    });
-  });
-
-  return datos;
-};
 
 export function InventarioGeneracionesView() {
   const { estanques: estanquesSupabase, isLoading: loadingEstanques, error } = useEstanques();
   const { sesiones, loading: loadingMuestreos, calcularDatosGeneraciones, obtenerGeneraciones } = useMuestreos();
   const [datos, setDatos] = useState<EstanqueData[]>([]);
-  const [generacionSeleccionada, setGeneracionSeleccionada] = useState<string>("G-60");
+  const [generacionSeleccionada, setGeneracionSeleccionada] = useState<string>("");
   const [editandoCelda, setEditandoCelda] = useState<{estanque: string, lance: number} | null>(null);
 
   // Generar datos cuando se cargan los estanques y muestreos
   React.useEffect(() => {
     if (estanquesSupabase.length > 0) {
-      if (sesiones.length > 0 && generacionSeleccionada !== "todos") {
+      if (sesiones.length > 0 && generacionSeleccionada && generacionSeleccionada !== "todos") {
         // Usar datos reales de muestreos para la generación seleccionada
         const datosReales: EstanqueData[] = [];
 
@@ -92,40 +58,56 @@ export function InventarioGeneracionesView() {
           const sesionesEstanque = sesiones.filter(s =>
             s.generacion === generacionSeleccionada &&
             s.muestreos[estanque.id.toString()]
-          );
+          ).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
 
           if (sesionesEstanque.length > 0) {
             const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
             const muestreo = sesionReciente.muestreos[estanque.id.toString()];
 
+            // Calcular estimación anterior si hay más de una sesión
+            let estimacionAnterior: number | undefined;
+            let ganancia: number | undefined;
+
+            if (sesionesEstanque.length > 1) {
+              const sesionAnterior = sesionesEstanque[sesionesEstanque.length - 2];
+              const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
+              if (muestreoAnterior) {
+                estimacionAnterior = muestreoAnterior.biomasa;
+                ganancia = muestreo.biomasa - estimacionAnterior;
+              }
+            }
+
             datosReales.push({
               estanqueId: estanque.id,
               estanque: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
-              lances: muestreo.muestreos,
-              mediana: muestreo.promedio,
-              estimacionActual: muestreo.biomasa,
-              estimacionAnterior: undefined, // TODO: calcular basado en muestreos anteriores
-              ganancia: undefined, // TODO: calcular basado en estimaciones
-              cosechaSemanal: 0 // TODO: integrar con datos de cosecha
+              lances: muestreo.muestreos || [],
+              mediana: muestreo.promedio || 0,
+              estimacionActual: muestreo.biomasa || 0,
+              estimacionAnterior,
+              ganancia,
+              cosechaSemanal: muestreo.cosecha || 0
             });
           }
         });
 
         setDatos(datosReales);
       } else {
-        // Usar datos mock si no hay muestreos registrados o no hay generación seleccionada
-        const datosMock = generarDatosPorEstanque(estanquesSupabase, generacionSeleccionada || 'G-60');
-        setDatos(datosMock);
+        // Mostrar mensaje si no hay datos
+        setDatos([]);
       }
     }
   }, [estanquesSupabase, sesiones, generacionSeleccionada]);
 
   const generacionesDisponibles = useMemo(() => {
-    if (sesiones.length > 0) {
-      return obtenerGeneraciones();
-    }
-    return ['G-60', 'G-61', 'G-62', 'G-63', 'G-64', 'G-65', 'G-66', 'G-67', 'G-68', 'G-69'];
+    return obtenerGeneraciones();
   }, [sesiones, obtenerGeneraciones]);
+
+  // Auto-seleccionar primera generación disponible
+  React.useEffect(() => {
+    if (generacionesDisponibles.length > 0 && !generacionSeleccionada) {
+      setGeneracionSeleccionada(generacionesDisponibles[0]);
+    }
+  }, [generacionesDisponibles, generacionSeleccionada]);
 
   // Los datos ya están filtrados por generación
   const datosFiltrados = datos;
@@ -177,7 +159,7 @@ export function InventarioGeneracionesView() {
           </p>
           {sesiones.length === 0 && (
             <p className="text-xs text-amber-600 mt-1">
-              📋 Mostrando datos de ejemplo - Registra muestreos para ver datos reales
+              📋 No hay muestreos registrados - Ve a Inventario Vivo para registrar datos
             </p>
           )}
         </div>
@@ -245,7 +227,7 @@ export function InventarioGeneracionesView() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">
-                  {formatNumber(calcularTotales().estimacionTotal)} kg
+                  {formatWeight(calcularTotales().estimacionTotal)} kg
                 </div>
                 <div className="text-sm text-gray-600">Biomasa Total Estimada</div>
               </div>
@@ -257,7 +239,7 @@ export function InventarioGeneracionesView() {
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-purple-600">
-                  {datosFiltrados.length > 0 ? formatNumber(calcularTotales().estimacionTotal / datosFiltrados.length) : '0'} kg
+                  {datosFiltrados.length > 0 ? formatWeight(calcularTotales().estimacionTotal / datosFiltrados.length) : '0'} kg
                 </div>
                 <div className="text-sm text-gray-600">Promedio por Estanque</div>
               </div>
@@ -403,8 +385,9 @@ export function InventarioGeneracionesView() {
                 <div className="text-center py-8">
                   <div className="text-gray-500">
                     <Droplets className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg font-medium">No hay datos</p>
-                    <p className="text-sm">No se encontraron registros para la generación seleccionada</p>
+                    <p className="text-lg font-medium">No hay datos para esta generación</p>
+                    <p className="text-sm">No se encontraron registros de muestreos para {generacionSeleccionada}</p>
+                    <p className="text-xs text-blue-600 mt-2">Ve a Inventario Vivo para registrar muestreos</p>
                   </div>
                 </div>
               )}

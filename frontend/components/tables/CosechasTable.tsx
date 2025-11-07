@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Search, Filter, Download, Eye, Fish } from "lucide-react";
+import { formatWeight } from "@/lib/utils/formatters";
 
 interface CosechasTableProps {
   cosechasHook: ReturnType<typeof useCosechas>;
@@ -72,7 +73,7 @@ export function CosechasTable({ cosechasHook }: CosechasTableProps) {
   };
 
   const formatKg = (kg: number) => {
-    return `${kg.toFixed(3)} kg`;
+    return `${formatWeight(kg)} kg`;
   };
 
 

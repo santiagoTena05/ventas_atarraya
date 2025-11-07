@@ -328,6 +328,7 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
                 <th className="text-right p-3 font-medium">Cortesía</th>
                 <th className="text-right p-3 font-medium">Pagado</th>
                 <th className="text-right p-3 font-medium">Pendiente</th>
+                <th className="text-right p-3 font-medium">% Ventas</th>
                 <th className="text-right p-3 font-medium">Grand Total</th>
               </tr>
             </thead>
@@ -349,6 +350,9 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
                     <td className="p-3 text-right font-medium">{formatCurrency(responsable.totales.cortesia)}</td>
                     <td className="p-3 text-right font-medium">{formatCurrency(responsable.totales.pagado)}</td>
                     <td className="p-3 text-right font-medium">{formatCurrency(responsable.totales.pendiente)}</td>
+                    <td className="p-3 text-right font-medium">
+                      {granTotal.total > 0 ? ((responsable.totales.total / granTotal.total) * 100).toFixed(1) : '0.0'}%
+                    </td>
                     <td className="p-3 text-right font-medium">{formatCurrency(responsable.totales.total)}</td>
                   </tr>
 
@@ -372,6 +376,9 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
                         <td className="p-3 text-right">{formatCurrency(tipoData.cortesia)}</td>
                         <td className="p-3 text-right">{formatCurrency(tipoData.pagado)}</td>
                         <td className="p-3 text-right">{formatCurrency(tipoData.pendiente)}</td>
+                        <td className="p-3 text-right">
+                          {responsable.totales.total > 0 ? ((tipoData.total / responsable.totales.total) * 100).toFixed(1) : '0.0'}%
+                        </td>
                         <td className="p-3 text-right font-medium">{formatCurrency(tipoData.total)}</td>
                       </tr>
 
@@ -384,6 +391,9 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
                           <td className="p-3 text-right">{formatCurrency(cliente.cortesia)}</td>
                           <td className="p-3 text-right">{formatCurrency(cliente.pagado)}</td>
                           <td className="p-3 text-right">{formatCurrency(cliente.pendiente)}</td>
+                          <td className="p-3 text-right text-gray-500">
+                            {tipoData.total > 0 ? ((cliente.total / tipoData.total) * 100).toFixed(1) : '0.0'}%
+                          </td>
                           <td className="p-3 text-right">{formatCurrency(cliente.total)}</td>
                         </tr>
                       ))}
@@ -400,6 +410,7 @@ export function ResumenCuentas({ salesHook }: ResumenCuentasProps) {
                 <td className="p-3 text-right">{formatCurrency(granTotal.cortesia)}</td>
                 <td className="p-3 text-right">{formatCurrency(granTotal.pagado)}</td>
                 <td className="p-3 text-right">{formatCurrency(granTotal.pendiente)}</td>
+                <td className="p-3 text-right">100.0%</td>
                 <td className="p-3 text-right">{formatCurrency(granTotal.total)}</td>
               </tr>
             </tbody>

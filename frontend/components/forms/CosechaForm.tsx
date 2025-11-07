@@ -19,6 +19,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2, ShoppingCart } from "lucide-react";
+import { formatWeight, formatCurrency } from "@/lib/utils/formatters";
 import { useCosechas } from "@/lib/hooks/useCosechas";
 import { usePedidos, type Pedido } from "@/lib/hooks/usePedidos";
 import { usePrecios, type CalculoPrecio } from "@/lib/hooks/usePrecios";
@@ -606,7 +607,7 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                     Peso Total (kg)
                   </Label>
                   <div className="h-10 px-3 py-2 border border-gray-300 bg-gray-50 rounded-md text-sm font-semibold">
-                    {watch("pesoTotalKg")?.toFixed(3) || "0.000"} kg
+                    {formatWeight(watch("pesoTotalKg") || 0)} kg
                   </div>
                 </div>
 
@@ -694,7 +695,7 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                       <div className="space-y-2">
                         <Label className="text-sm font-medium text-gray-700">Peso (kg)</Label>
                         <div className="h-10 px-3 py-2 border border-gray-300 bg-gray-50 rounded-md text-sm">
-                          {(watch("pesoTotalKg") || 0).toFixed(3)} kg
+                          {formatWeight(watch("pesoTotalKg") || 0)} kg
                         </div>
                         <p className="text-xs text-gray-600">Se toma automáticamente de la cosecha</p>
                       </div>
@@ -703,7 +704,7 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                         <Label className="text-sm font-medium text-gray-700">Precio Sugerido</Label>
                         <div className="h-10 px-3 py-2 border border-gray-300 bg-green-50 rounded-md text-sm font-semibold text-green-800">
                           {isCalculatingPrice ? "Calculando..." :
-                           calculoPrecio ? `$${calculoPrecio.precio_unitario.toFixed(2)}/kg` :
+                           calculoPrecio ? `${formatCurrency(calculoPrecio.precio_unitario)}/kg` :
                            "Selecciona tipo de cliente"}
                         </div>
                         <p className="text-xs text-gray-600">Precio automático según tipo de cliente</p>
@@ -743,11 +744,11 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                       <div className="space-y-2">
                         <Label className="text-sm font-medium text-gray-700">Total Final</Label>
                         <div className="h-10 px-3 py-2 border border-gray-300 bg-green-50 rounded-md text-sm font-bold text-green-800">
-                          {calculoPrecio ? `$${calculoPrecio.monto_total.toFixed(2)}` : "$0.00"}
+                          {calculoPrecio ? formatCurrency(calculoPrecio.monto_total) : "$0.00"}
                         </div>
                         {calculoPrecio && calculoPrecio.monto_descuentos > 0 && (
                           <p className="text-xs text-gray-600">
-                            Descuentos: $${calculoPrecio.monto_descuentos.toFixed(2)}
+                            Descuentos: ${formatCurrency(calculoPrecio.monto_descuentos)}
                           </p>
                         )}
                       </div>
@@ -891,14 +892,14 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                     <div className="p-4 bg-green-100 border border-green-300 rounded-lg">
                       <h6 className="font-semibold text-green-900 mb-2">Resumen de la Venta</h6>
                       <div className="text-sm text-green-800 space-y-1">
-                        <p><strong>Peso:</strong> {datosVenta.enteroKgs.toFixed(3)} kg</p>
-                        <p><strong>Precio base:</strong> ${calculoPrecio.precio_unitario.toFixed(2)}/kg</p>
-                        <p><strong>Subtotal:</strong> ${calculoPrecio.monto_bruto.toFixed(2)}</p>
+                        <p><strong>Peso:</strong> {formatWeight(datosVenta.enteroKgs)} kg</p>
+                        <p><strong>Precio base:</strong> {formatCurrency(calculoPrecio.precio_unitario)}/kg</p>
+                        <p><strong>Subtotal:</strong> {formatCurrency(calculoPrecio.monto_bruto)}</p>
                         {calculoPrecio.monto_descuentos > 0 && (
-                          <p><strong>Descuentos:</strong> -${calculoPrecio.monto_descuentos.toFixed(2)}</p>
+                          <p><strong>Descuentos:</strong> -{formatCurrency(calculoPrecio.monto_descuentos)}</p>
                         )}
                         <p className="text-lg font-bold border-t border-green-300 pt-1">
-                          <strong>Total Final:</strong> ${calculoPrecio.monto_total.toFixed(2)}
+                          <strong>Total Final:</strong> {formatCurrency(calculoPrecio.monto_total)}
                         </p>
                       </div>
                     </div>

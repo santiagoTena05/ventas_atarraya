@@ -8,13 +8,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { usePathname, useRouter } from "next/navigation";
 
-interface NavigationProps {
-  currentView: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'inventario-vivo' | 'inventario-vivo-table' | 'inventario-generaciones' | 'inventario-calculos' | 'admin';
-  onViewChange: (view: 'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'inventario-vivo' | 'inventario-vivo-table' | 'inventario-generaciones' | 'inventario-calculos' | 'admin') => void;
-}
-
-export function Navigation({ currentView, onViewChange }: NavigationProps) {
+export function Navigation() {
+  const pathname = usePathname();
+  const router = useRouter();
   return (
     <div className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="container mx-auto">
@@ -32,9 +30,9 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={(currentView === 'form' || currentView === 'table') ? 'default' : 'outline'}
+                  variant={(pathname.startsWith('/ventas')) ? 'default' : 'outline'}
                   className={`flex items-center gap-2 ${
-                    (currentView === 'form' || currentView === 'table')
+                    (pathname.startsWith('/ventas'))
                       ? 'bg-gray-900 text-white'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
@@ -45,10 +43,10 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onViewChange('form')}>
+                <DropdownMenuItem onClick={() => router.push('/ventas')}>
                   Registrar Venta
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('table')}>
+                <DropdownMenuItem onClick={() => router.push('/ventas/tabla')}>
                   Ver Ventas
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -57,9 +55,9 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={(currentView === 'cosecha-form' || currentView === 'cosecha-table') ? 'default' : 'outline'}
+                  variant={(pathname.startsWith('/cosechas')) ? 'default' : 'outline'}
                   className={`flex items-center gap-2 ${
-                    (currentView === 'cosecha-form' || currentView === 'cosecha-table')
+                    (pathname.startsWith('/cosechas'))
                       ? 'bg-gray-900 text-white'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
@@ -70,23 +68,23 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onViewChange('cosecha-form')}>
+                <DropdownMenuItem onClick={() => router.push('/cosechas')}>
                   Registrar Cosecha
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('cosecha-table')}>
+                <DropdownMenuItem onClick={() => router.push('/cosechas/tabla')}>
                   Ver Cosechas
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
             <Button
-              variant={currentView === 'pedidos' ? 'default' : 'outline'}
+              variant={pathname === '/pedidos' ? 'default' : 'outline'}
               className={`flex items-center gap-2 ${
-                currentView === 'pedidos'
+                pathname === '/pedidos'
                   ? 'bg-gray-900 text-white'
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
-              onClick={() => onViewChange('pedidos')}
+              onClick={() => router.push('/pedidos')}
             >
               <ShoppingCart className="h-4 w-4" />
               Pedidos
@@ -95,9 +93,9 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={(currentView === 'inventario-vivo' || currentView === 'inventario-vivo-table' || currentView === 'inventario-generaciones' || currentView === 'inventario-calculos') ? 'default' : 'outline'}
+                  variant={(pathname.startsWith('/inventario-vivo')) ? 'default' : 'outline'}
                   className={`flex items-center gap-2 ${
-                    (currentView === 'inventario-vivo' || currentView === 'inventario-vivo-table' || currentView === 'inventario-generaciones' || currentView === 'inventario-calculos')
+                    (pathname.startsWith('/inventario-vivo'))
                       ? 'bg-blue-600 text-white hover:bg-blue-700'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
@@ -108,17 +106,14 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onViewChange('inventario-vivo')}>
+                <DropdownMenuItem onClick={() => router.push('/inventario-vivo')}>
                   Registrar Muestreos
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('inventario-generaciones')}>
+                <DropdownMenuItem onClick={() => router.push('/inventario-vivo/generaciones')}>
                   Vista por Generaciones
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('inventario-calculos')}>
+                <DropdownMenuItem onClick={() => router.push('/inventario-vivo/calculos')}>
                   Vista de Cálculos
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('inventario-vivo-table')}>
-                  Ver Historial
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -126,9 +121,9 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  variant={(currentView === 'resumen1' || currentView === 'resumen2' || currentView === 'canal-ventas' || currentView === 'reportes-ventas') ? 'default' : 'outline'}
+                  variant={(pathname.startsWith('/reportes')) ? 'default' : 'outline'}
                   className={`flex items-center gap-2 ${
-                    (currentView === 'resumen1' || currentView === 'resumen2' || currentView === 'canal-ventas' || currentView === 'reportes-ventas')
+                    (pathname.startsWith('/reportes'))
                       ? 'bg-gray-900 text-white'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                   }`}
@@ -139,16 +134,16 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onViewChange('reportes-ventas')}>
+                <DropdownMenuItem onClick={() => router.push('/reportes')}>
                   Reportes de Ventas
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('canal-ventas')}>
+                <DropdownMenuItem onClick={() => router.push('/reportes/canal-ventas')}>
                   Canal de Ventas
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('resumen1')}>
+                <DropdownMenuItem onClick={() => router.push('/reportes/resumen-cuentas')}>
                   Resumen Cuentas I (por responsable)
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onViewChange('resumen2')}>
+                <DropdownMenuItem onClick={() => router.push('/reportes/resumen-cuentas-2')}>
                   Resumen Cuentas II (por tipo de cliente)
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -189,13 +184,13 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
             )}
 
             <Button
-              variant={currentView === 'admin' ? 'default' : 'outline'}
+              variant={pathname === '/admin' ? 'default' : 'outline'}
               className={`flex items-center gap-2 ${
-                currentView === 'admin'
+                pathname === '/admin'
                   ? 'bg-teal-600 text-white hover:bg-teal-700'
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
-              onClick={() => onViewChange('admin')}
+              onClick={() => router.push('/admin')}
             >
               <Settings className="h-4 w-4" />
               Admin

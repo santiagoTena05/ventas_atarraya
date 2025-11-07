@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Search, Filter, Download, Eye } from "lucide-react";
 import { EditSaleDialog } from "@/components/forms/EditSaleDialog";
+import { formatNumber, formatCurrency, formatWeight } from "@/lib/utils/formatters";
 
 interface VentasTableProps {
   salesHook: ReturnType<typeof useSales>;
@@ -69,12 +70,6 @@ export function VentasTable({ salesHook }: VentasTableProps) {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedSales = filteredSales.slice(startIndex, startIndex + itemsPerPage);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-    }).format(amount);
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-MX');
@@ -133,7 +128,7 @@ export function VentasTable({ salesHook }: VentasTableProps) {
       formatDate(sale.fechaEntrega),
       sale.tipoProducto,
       sale.tallaCamaron || '-',
-      sale.enteroKgs.toFixed(3),
+      formatWeight(sale.enteroKgs),
       formatCurrency(sale.precioVenta),
       formatCurrency(sale.totalOrden),
       sale.estatusPagoCliente
@@ -354,7 +349,7 @@ export function VentasTable({ salesHook }: VentasTableProps) {
                         {sale.tallaCamaron || '-'}
                       </TableCell>
                       <TableCell className="text-sm text-gray-700 text-right">
-                        {sale.enteroKgs.toFixed(3)}
+                        {formatWeight(sale.enteroKgs)}
                       </TableCell>
                       <TableCell className="text-sm text-gray-700 text-right">
                         {formatCurrency(sale.precioVenta)}
@@ -489,7 +484,7 @@ export function VentasTable({ salesHook }: VentasTableProps) {
               <div className="bg-gray-50 p-4 rounded-lg">
                 <div className="text-xs font-medium text-gray-600 mb-1">Total Kgs</div>
                 <div className="text-lg font-bold text-gray-900">
-                  {filteredSales.reduce((sum, sale) => sum + sale.enteroKgs, 0).toFixed(3)}
+                  {formatWeight(filteredSales.reduce((sum, sale) => sum + sale.enteroKgs, 0))}
                 </div>
               </div>
             </div>

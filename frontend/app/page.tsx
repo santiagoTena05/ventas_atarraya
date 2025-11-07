@@ -1,81 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { VentaForm } from "@/components/forms/VentaForm";
-import { VentasTable } from "@/components/tables/VentasTable";
-import { CosechaForm } from "@/components/forms/CosechaForm";
-import { CosechasTable } from "@/components/tables/CosechasTable";
-import { PedidosView } from "@/components/views/PedidosView";
-import { ResumenCuentas } from "@/components/reports/ResumenCuentas";
-import { ResumenCuentas2 } from "@/components/reports/ResumenCuentas2";
-import { CanalVentas } from "@/components/reports/CanalVentas";
-import { ReportesVentas } from "@/components/reports/ReportesVentas";
-import { EstadosCuenta } from "@/components/reports/EstadosCuenta";
-import { EstadosCuentaMVTabla } from "@/components/reports/EstadosCuentaMVTabla";
-import { EstadosCuentaALVTabla } from "@/components/reports/EstadosCuentaALVTabla";
-import { EstadosCuentaALVResumen } from "@/components/reports/EstadosCuentaALVResumen";
-import { AdminView } from "@/components/admin/AdminView";
-import { InventarioVivoView } from "@/components/views/InventarioVivoView";
-import { InventarioVivoTable } from "@/components/tables/InventarioVivoTable";
-import { InventarioGeneracionesView } from "@/components/views/InventarioGeneracionesView";
-import { InventarioCalculosView } from "@/components/views/InventarioCalculosView";
-import { Navigation } from "@/components/layout/Navigation";
-import { useSales } from "@/lib/hooks/useSales";
-import { useCosechas } from "@/lib/hooks/useCosechas";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const [currentView, setCurrentView] = useState<'form' | 'table' | 'resumen1' | 'resumen2' | 'canal-ventas' | 'reportes-ventas' | 'estados-cuenta' | 'estados-mv-tabla' | 'estados-alv-tabla' | 'estados-alv-resumen' | 'cosecha-form' | 'cosecha-table' | 'pedidos' | 'inventario-vivo' | 'inventario-vivo-table' | 'inventario-generaciones' | 'inventario-calculos' | 'admin'>('form');
-  const salesHook = useSales();
-  const cosechasHook = useCosechas();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Redirect to ventas page by default
+    router.push('/ventas');
+  }, [router]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation
-        currentView={currentView}
-        onViewChange={setCurrentView}
-      />
-
-      <div className="pt-4">
-        {currentView === 'form' ? (
-          <VentaForm
-            salesHook={salesHook}
-            onSaleRegistered={() => setCurrentView('table')}
-          />
-        ) : currentView === 'table' ? (
-          <VentasTable salesHook={salesHook} />
-        ) : currentView === 'cosecha-form' ? (
-          <CosechaForm onCosechaRegistered={() => setCurrentView('cosecha-table')} />
-        ) : currentView === 'cosecha-table' ? (
-          <CosechasTable cosechasHook={cosechasHook} />
-        ) : currentView === 'pedidos' ? (
-          <PedidosView />
-        ) : currentView === 'inventario-vivo' ? (
-          <InventarioVivoView />
-        ) : currentView === 'inventario-vivo-table' ? (
-          <InventarioVivoTable />
-        ) : currentView === 'inventario-generaciones' ? (
-          <InventarioGeneracionesView />
-        ) : currentView === 'inventario-calculos' ? (
-          <InventarioCalculosView />
-        ) : currentView === 'resumen1' ? (
-          <ResumenCuentas salesHook={salesHook} />
-        ) : currentView === 'resumen2' ? (
-          <ResumenCuentas2 salesHook={salesHook} />
-        ) : currentView === 'canal-ventas' ? (
-          <CanalVentas salesHook={salesHook} />
-        ) : currentView === 'estados-cuenta' ? (
-          <EstadosCuenta salesHook={salesHook} />
-        ) : currentView === 'estados-mv-tabla' ? (
-          <EstadosCuentaMVTabla salesHook={salesHook} />
-        ) : currentView === 'estados-alv-tabla' ? (
-          <EstadosCuentaALVTabla salesHook={salesHook} />
-        ) : currentView === 'estados-alv-resumen' ? (
-          <EstadosCuentaALVResumen salesHook={salesHook} />
-        ) : currentView === 'admin' ? (
-          <AdminView />
-        ) : (
-          <ReportesVentas salesHook={salesHook} />
-        )}
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Cargando...</p>
       </div>
     </div>
   );

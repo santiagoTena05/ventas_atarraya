@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { GenerationAutocomplete } from "@/components/ui/generation-autocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Droplets, CheckCircle, Clock, Calculator } from "lucide-react";
@@ -22,6 +22,7 @@ interface Muestreo {
 interface SesionRegistro {
   fecha: string;
   generacion: string;
+  semana?: number;
   muestreos: { [estanqueId: string]: { valores: number[], cosecha: number } };
 }
 
@@ -36,13 +37,14 @@ interface EstanqueLocal {
 
 export function InventarioVivoView() {
   const { estanques: estanquesSupabase, isLoading: loadingEstanques, error } = useEstanques();
-  const { guardarSesion } = useMuestreos();
+  const { sesiones, guardarSesion, loading: loadingSesiones } = useMuestreos();
   const [estanques, setEstanques] = useState<EstanqueLocal[]>([]);
 
   // Estados para el formulario inicial
   const [sesionIniciada, setSesionIniciada] = useState(false);
   const [fechaSeleccionada, setFechaSeleccionada] = useState('');
   const [generacionSeleccionada, setGeneracionSeleccionada] = useState('');
+  const [semanaSeleccionada, setSemanaSeleccionada] = useState<number>(1);
 
   // Estados para el registro de muestreos
   const [sesionActual, setSesionActual] = useState<SesionRegistro | null>(null);
@@ -79,6 +81,7 @@ export function InventarioVivoView() {
     const nuevaSesion: SesionRegistro = {
       fecha: fechaSeleccionada,
       generacion: generacionSeleccionada,
+      semana: semanaSeleccionada,
       muestreos: {}
     };
 
@@ -89,8 +92,35 @@ export function InventarioVivoView() {
     setEstanques(prev => prev.map(e => ({ ...e, completado: false })));
   };
 
+  // Función para continuar sesión guardada
+  const continuarSesion = (sesionGuardada: any) => {
+    const sesionContinuada: SesionRegistro = {
+      fecha: sesionGuardada.fecha,
+      generacion: sesionGuardada.generacion,
+      semana: sesionGuardada.semana,
+      muestreos: {}
+    };
+
+    // Convertir muestreos guardados al formato local
+    Object.entries(sesionGuardada.muestreos).forEach(([estanqueId, muestreo]: [string, any]) => {
+      sesionContinuada.muestreos[estanqueId] = {
+        valores: muestreo.muestreos || [],
+        cosecha: muestreo.cosecha || 0
+      };
+    });
+
+    setSesionActual(sesionContinuada);
+    setSesionIniciada(true);
+
+    // Marcar estanques como completados si tienen datos
+    setEstanques(prev => prev.map(e => ({
+      ...e,
+      completado: sesionContinuada.muestreos[e.id] ? true : false
+    })));
+  };
+
   // Función para guardar toda la sesión
-  const guardarSesionCompleta = async () => {
+  const guardarSesionCompleta = async (estado: 'completado' | 'en_progreso' = 'completado') => {
     if (!sesionActual) return;
 
     // Transformar datos al formato esperado por useMuestreos
@@ -104,26 +134,34 @@ export function InventarioVivoView() {
         estanqueId: parseInt(estanqueId),
         muestreos: datos.valores,
         promedio,
-        biomasa: calcularBiomasa(promedio, estanque?.area || 540)
+        biomasa: calcularBiomasa(promedio, estanque?.area || 540),
+        cosecha: datos.cosecha
       };
     });
 
     const sesionParaGuardar = {
       fecha: sesionActual.fecha,
       generacion: sesionActual.generacion,
-      muestreos: muestreosTransformados
+      semana: sesionActual.semana,
+      muestreos: muestreosTransformados,
+      estado
     };
 
-    const guardado = guardarSesion(sesionParaGuardar);
+    const guardado = await guardarSesion(sesionParaGuardar);
 
     if (guardado) {
-      alert(`Sesión guardada exitosamente!\nFecha: ${sesionActual.fecha}\nGeneración: ${sesionActual.generacion}\nEstanques registrados: ${Object.keys(sesionActual.muestreos).length}`);
+      const mensaje = estado === 'completado'
+        ? `Sesión guardada exitosamente!\nFecha: ${sesionActual.fecha}\nGeneración: ${sesionActual.generacion}\nEstanques registrados: ${Object.keys(sesionActual.muestreos).length}`
+        : `Sesión guardada como en progreso!\nFecha: ${sesionActual.fecha}\nGeneración: ${sesionActual.generacion}\nEstanques registrados: ${Object.keys(sesionActual.muestreos).length}\nPodrás continuar más tarde desde la lista de sesiones.`;
+
+      alert(mensaje);
 
       // Resetear todo
       setSesionIniciada(false);
       setSesionActual(null);
       setFechaSeleccionada('');
       setGeneracionSeleccionada('');
+      setSemanaSeleccionada(1);
       setEstanques(prev => prev.map(e => ({ ...e, completado: false })));
     } else {
       alert('Error al guardar la sesión. Inténtalo de nuevo.');
@@ -135,11 +173,6 @@ export function InventarioVivoView() {
     return estanquesActivos.every(e => e.completado);
   };
 
-  // Generar opciones de generación
-  const generacionesDisponibles = [
-    'G-60', 'G-61', 'G-62', 'G-63', 'G-64', 'G-65',
-    'G-66', 'G-67', 'G-68', 'G-69', 'G-70'
-  ];
 
   const calcularPromedio = (vals: number[]) => {
     if (vals.length === 0) return 0;
@@ -158,6 +191,21 @@ export function InventarioVivoView() {
     setIndiceMuestreo(0);
     setModoRegistroCosecha(false);
     setModalAbierto(true);
+  };
+
+  const saltarEstanque = () => {
+    if (!estanqueActual) return;
+
+    // Marcar estanque como completado sin datos
+    setEstanques(prev =>
+      prev.map(e =>
+        e.id === estanqueActual.id
+          ? { ...e, completado: true }
+          : e
+      )
+    );
+
+    siguienteEstanque();
   };
 
   const siguienteEstanque = () => {
@@ -327,18 +375,26 @@ export function InventarioVivoView() {
 
               <div>
                 <Label htmlFor="generacion">Generación</Label>
-                <Select value={generacionSeleccionada} onValueChange={setGeneracionSeleccionada}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecciona una generación" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {generacionesDisponibles.map((gen) => (
-                      <SelectItem key={gen} value={gen}>
-                        {gen}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <GenerationAutocomplete
+                  value={generacionSeleccionada}
+                  onChange={setGeneracionSeleccionada}
+                  placeholder="Buscar o crear generación..."
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="semana">Semana de Cultivo</Label>
+                <Input
+                  id="semana"
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={semanaSeleccionada}
+                  onChange={(e) => setSemanaSeleccionada(parseInt(e.target.value) || 1)}
+                  className="mt-1"
+                  placeholder="Número de semana (ej: 1, 2, 3...)"
+                />
               </div>
 
               <Button
@@ -351,6 +407,57 @@ export function InventarioVivoView() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Sesiones guardadas en progreso */}
+        {!loadingSesiones && sesiones.filter(s => s.estado === 'en_progreso').length > 0 && (
+          <div className="max-w-2xl mx-auto mt-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-center flex items-center justify-center gap-2">
+                  <Clock className="h-5 w-5 text-orange-600" />
+                  Sesiones en Progreso
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-gray-600 mb-4 text-center">
+                  Continúa una sesión de muestreos que dejaste pendiente
+                </p>
+                <div className="space-y-2">
+                  {sesiones
+                    .filter(s => s.estado === 'en_progreso')
+                    .slice(0, 5)
+                    .map((sesion) => (
+                      <div
+                        key={sesion.id}
+                        className="flex items-center justify-between p-3 border border-orange-200 rounded-lg bg-orange-50 hover:bg-orange-100 cursor-pointer transition-colors"
+                        onClick={() => continuarSesion(sesion)}
+                      >
+                        <div>
+                          <div className="font-medium text-orange-900">
+                            {sesion.generacion} - {sesion.fecha}
+                          </div>
+                          <div className="text-sm text-orange-700">
+                            Semana {sesion.semana} • {Object.keys(sesion.muestreos).length} estanques registrados
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            continuarSesion(sesion);
+                          }}
+                        >
+                          Continuar
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Información adicional */}
         <div className="max-w-2xl mx-auto mt-8">
@@ -365,6 +472,7 @@ export function InventarioVivoView() {
                   <ul className="text-sm text-blue-800 space-y-1">
                     <li>• Registrarás 9 muestreos por cada estanque activo ({estanquesActivos.length} estanques)</li>
                     <li>• Usa Enter para avanzar rápidamente entre campos</li>
+                    <li>• Puedes saltar estanques o finalizar sesiones incompletas</li>
                     <li>• Al final podrás guardar toda la información de una vez</li>
                     <li>• Los datos se usarán para generar las tablas de análisis</li>
                   </ul>
@@ -399,14 +507,25 @@ export function InventarioVivoView() {
           <div className="text-lg font-semibold text-green-600">
             {estanquesCompletados} / {estanquesActivos.length} estanques
           </div>
-          {todasLasMedicionesCompletas() && (
-            <Button
-              onClick={guardarSesionCompleta}
-              className="mt-2 bg-green-600 hover:bg-green-700"
-            >
-              Guardar Registro Completo
-            </Button>
-          )}
+          <div className="flex gap-2 mt-2">
+            {todasLasMedicionesCompletas() && (
+              <Button
+                onClick={() => guardarSesionCompleta('completado')}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Guardar Registro Completo
+              </Button>
+            )}
+            {Object.keys(sesionActual?.muestreos || {}).length > 0 && (
+              <Button
+                onClick={() => guardarSesionCompleta('en_progreso')}
+                variant="outline"
+                className="border-orange-500 text-orange-600 hover:bg-orange-50"
+              >
+                Finalizar Sesión
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -482,7 +601,7 @@ export function InventarioVivoView() {
                 </div>
               </div>
               <Button
-                onClick={guardarSesionCompleta}
+                onClick={() => guardarSesionCompleta('completado')}
                 className="bg-green-600 hover:bg-green-700"
               >
                 Guardar Registro Completo
@@ -623,7 +742,7 @@ export function InventarioVivoView() {
               </>
             )}
 
-            <div className="text-center">
+            <div className="flex gap-2 justify-center">
               <Button
                 variant="ghost"
                 size="sm"
@@ -631,6 +750,14 @@ export function InventarioVivoView() {
                 className="text-gray-500"
               >
                 Cancelar (ESC)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={saltarEstanque}
+                className="text-orange-600 border-orange-500 hover:bg-orange-50"
+              >
+                Saltar estanque
               </Button>
             </div>
           </div>

@@ -1,64 +1,202 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useGeneraciones } from '@/lib/hooks/useGeneraciones';
 
 export interface MuestreoEstanque {
   estanqueId: number;
   muestreos: number[];
   promedio: number;
   biomasa: number;
+  cosecha?: number;
 }
 
 export interface SesionRegistro {
   id: string;
   fecha: string;
   generacion: string;
+  semana?: number;
   muestreos: { [estanqueId: string]: MuestreoEstanque };
   fechaRegistro: Date;
+  estado?: 'en_progreso' | 'completado';
 }
 
-const STORAGE_KEY = 'muestreos_sessions';
+export interface MuestreosSesion {
+  id: string;
+  fecha: string;
+  semana?: number;
+  generacion_id: string;
+  estado: 'en_progreso' | 'completado';
+  observaciones?: string;
+  created_at: string;
+  updated_at: string;
+  generaciones?: {
+    codigo: string;
+    nombre?: string;
+  };
+}
+
+export interface MuestreosDetalle {
+  id: string;
+  sesion_id: string;
+  estanque_id: number;
+  muestreos: number[];
+  promedio: number;
+  biomasa: number;
+  cosecha: number;
+  observaciones?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export function useMuestreos() {
   const [sesiones, setSesiones] = useState<SesionRegistro[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { generaciones, getGeneracionByCodigo, crearGeneracion } = useGeneraciones();
 
-  // Cargar sesiones desde localStorage al inicializar
-  useEffect(() => {
+  // Cargar sesiones desde Supabase
+  const loadSesiones = async () => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        // Convertir fechaRegistro de string a Date
-        const sesionesConFechas = parsed.map((sesion: any) => ({
-          ...sesion,
-          fechaRegistro: new Date(sesion.fechaRegistro)
-        }));
-        setSesiones(sesionesConFechas);
+      setLoading(true);
+      setError(null);
+      console.log('🔄 Cargando sesiones de muestreos desde Supabase...');
+
+      const { data: sesionesData, error: sesionesError } = await supabase
+        .from('muestreos_sesiones')
+        .select(`
+          *,
+          generaciones (
+            codigo,
+            nombre
+          )
+        `)
+        .order('fecha', { ascending: false });
+
+      if (sesionesError) {
+        console.error('❌ Error cargando sesiones:', sesionesError);
+        setError('Error cargando sesiones');
+        return;
+      }
+
+      if (sesionesData && sesionesData.length > 0) {
+        // Cargar detalles de muestreos para cada sesión
+        const { data: detallesData, error: detallesError } = await supabase
+          .from('muestreos_detalle')
+          .select('*')
+          .in('sesion_id', sesionesData.map(s => s.id));
+
+        if (detallesError) {
+          console.error('❌ Error cargando detalles:', detallesError);
+          setError('Error cargando detalles de muestreos');
+          return;
+        }
+
+        // Transformar datos al formato esperado por la interfaz
+        const sesionesTransformadas: SesionRegistro[] = sesionesData.map(sesion => {
+          const detallesSesion = detallesData?.filter(d => d.sesion_id === sesion.id) || [];
+
+          const muestreos: { [estanqueId: string]: MuestreoEstanque } = {};
+          detallesSesion.forEach(detalle => {
+            muestreos[detalle.estanque_id.toString()] = {
+              estanqueId: detalle.estanque_id,
+              muestreos: detalle.muestreos || [],
+              promedio: detalle.promedio || 0,
+              biomasa: detalle.biomasa || 0,
+              cosecha: detalle.cosecha || 0
+            };
+          });
+
+          return {
+            id: sesion.id,
+            fecha: sesion.fecha,
+            generacion: sesion.generaciones?.codigo || 'N/A',
+            semana: sesion.semana,
+            muestreos,
+            fechaRegistro: new Date(sesion.created_at),
+            estado: sesion.estado
+          };
+        });
+
+        setSesiones(sesionesTransformadas);
+        console.log(`✅ Cargadas ${sesionesTransformadas.length} sesiones de muestreos`);
+      } else {
+        setSesiones([]);
+        console.log('📋 No hay sesiones de muestreos registradas');
       }
     } catch (error) {
-      console.error('Error cargando sesiones de muestreos:', error);
+      console.error('❌ Error cargando muestreos:', error);
+      setError('Error de conexión');
+      setSesiones([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  // Guardar nueva sesión
-  const guardarSesion = (sesion: Omit<SesionRegistro, 'id' | 'fechaRegistro'>) => {
-    const nuevaSesion: SesionRegistro = {
-      ...sesion,
-      id: `sesion_${Date.now()}`,
-      fechaRegistro: new Date()
-    };
-
-    const nuevasSesiones = [...sesiones, nuevaSesion];
-    setSesiones(nuevasSesiones);
-
+  // Guardar nueva sesión en Supabase
+  const guardarSesion = async (sesion: Omit<SesionRegistro, 'id' | 'fechaRegistro'>) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevasSesiones));
+      console.log('🔄 Guardando sesión de muestreos...');
+
+      // Buscar o crear generación
+      let generacion = getGeneracionByCodigo(sesion.generacion);
+      if (!generacion) {
+        console.log('🔄 Creando nueva generación:', sesion.generacion);
+        generacion = await crearGeneracion({
+          codigo: sesion.generacion,
+          estado: 'activa'
+        });
+      }
+
+      if (!generacion) {
+        throw new Error('No se pudo crear o encontrar la generación');
+      }
+
+      // Crear sesión de muestreo
+      const { data: sesionData, error: sesionError } = await supabase
+        .from('muestreos_sesiones')
+        .insert([{
+          fecha: sesion.fecha,
+          semana: sesion.semana,
+          generacion_id: generacion.id,
+          estado: sesion.estado || 'completado'
+        }])
+        .select()
+        .single();
+
+      if (sesionError) {
+        console.error('❌ Error creando sesión:', sesionError);
+        throw new Error('Error creando sesión');
+      }
+
+      // Crear detalles de muestreos
+      const detalles = Object.entries(sesion.muestreos).map(([estanqueId, muestreo]) => ({
+        sesion_id: sesionData.id,
+        estanque_id: parseInt(estanqueId),
+        muestreos: muestreo.muestreos,
+        promedio: muestreo.promedio,
+        biomasa: muestreo.biomasa,
+        cosecha: muestreo.cosecha || 0
+      }));
+
+      const { error: detallesError } = await supabase
+        .from('muestreos_detalle')
+        .insert(detalles);
+
+      if (detallesError) {
+        console.error('❌ Error creando detalles:', detallesError);
+        throw new Error('Error guardando detalles de muestreos');
+      }
+
+      console.log('✅ Sesión guardada exitosamente');
+
+      // Recargar sesiones
+      await loadSesiones();
       return true;
     } catch (error) {
-      console.error('Error guardando sesión:', error);
+      console.error('❌ Error guardando sesión:', error);
+      setError('Error guardando sesión');
       return false;
     }
   };
@@ -80,41 +218,34 @@ export function useMuestreos() {
 
   // Obtener todas las generaciones únicas
   const obtenerGeneraciones = () => {
-    const generaciones = Array.from(new Set(sesiones.map(s => s.generacion)));
-    return generaciones.sort();
+    const generacionesSet = new Set(sesiones.map(s => s.generacion));
+    return Array.from(generacionesSet).sort();
   };
 
   // Obtener todas las fechas únicas
   const obtenerFechas = () => {
-    const fechas = Array.from(new Set(sesiones.map(s => s.fecha)));
-    return fechas.sort();
+    const fechasSet = new Set(sesiones.map(s => s.fecha));
+    return Array.from(fechasSet).sort();
   };
 
   // Calcular datos para vista de generaciones
   const calcularDatosGeneraciones = (estanqueIds: number[]) => {
     const datos: any[] = [];
-    const generaciones = obtenerGeneraciones();
+    const generacionesUnicas = obtenerGeneraciones();
 
     estanqueIds.forEach(estanqueId => {
-      generaciones.forEach(generacion => {
-        const sesionesGen = obtenerPorGeneracion(generacion);
-        const muestreosEstanque = sesionesGen
+      generacionesUnicas.forEach(generacion => {
+        const sesionesGeneracion = obtenerPorGeneracion(generacion);
+        const muestreosEstanque = sesionesGeneracion
           .map(s => s.muestreos[estanqueId.toString()])
-          .filter(Boolean);
+          .filter(m => m);
 
         if (muestreosEstanque.length > 0) {
-          // Usar el muestreo más reciente para este estanque y generación
-          const muestreoReciente = muestreosEstanque[muestreosEstanque.length - 1];
-
+          const ultimoMuestreo = muestreosEstanque[muestreosEstanque.length - 1];
           datos.push({
             generacion,
             estanqueId,
-            lances: muestreoReciente.muestreos,
-            mediana: calcularMediana(muestreoReciente.muestreos),
-            estimacionActual: muestreoReciente.biomasa,
-            estimacionAnterior: undefined, // TODO: calcular basado en muestreos anteriores
-            ganancia: undefined, // TODO: calcular basado en estimaciones
-            cosechaSemanal: 0 // TODO: integrar con datos de cosecha
+            muestreo: ultimoMuestreo
           });
         }
       });
@@ -123,24 +254,27 @@ export function useMuestreos() {
     return datos;
   };
 
-  // Función auxiliar para calcular mediana
-  const calcularMediana = (valores: number[]) => {
-    const sorted = [...valores].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-      ? (sorted[middle - 1] + sorted[middle]) / 2
-      : sorted[middle];
+  // Recargar datos
+  const refresh = () => {
+    loadSesiones();
   };
+
+  // Inicializar carga de datos
+  useEffect(() => {
+    loadSesiones();
+  }, []);
 
   return {
     sesiones,
     loading,
+    error,
     guardarSesion,
     obtenerPorGeneracion,
     obtenerPorFecha,
     obtenerPorEstanque,
     obtenerGeneraciones,
     obtenerFechas,
-    calcularDatosGeneraciones
+    calcularDatosGeneraciones,
+    refresh
   };
 }
