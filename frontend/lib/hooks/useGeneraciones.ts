@@ -54,6 +54,13 @@ export function useGeneraciones() {
   // Crear nueva generación
   const crearGeneracion = async (nuevaGeneracion: Omit<Generacion, 'id' | 'created_at' | 'updated_at'>) => {
     try {
+      // Primero verificar si ya existe
+      const generacionExistente = getGeneracionByCodigo(nuevaGeneracion.codigo);
+      if (generacionExistente) {
+        console.log('✅ Generación ya existe:', nuevaGeneracion.codigo);
+        return generacionExistente;
+      }
+
       console.log('🔄 Creando nueva generación:', nuevaGeneracion.codigo);
 
       const { data, error } = await supabase
@@ -63,6 +70,15 @@ export function useGeneraciones() {
         .single();
 
       if (error) {
+        // Si el error es porque ya existe, intentar obtenerla
+        if (error.code === '23505') { // unique_violation
+          await loadGeneraciones(); // Recargar datos
+          const generacionRecargada = getGeneracionByCodigo(nuevaGeneracion.codigo);
+          if (generacionRecargada) {
+            console.log('✅ Generación encontrada después de recargar:', nuevaGeneracion.codigo);
+            return generacionRecargada;
+          }
+        }
         console.error('❌ Error creando generación:', error);
         throw new Error('Error creando generación');
       }

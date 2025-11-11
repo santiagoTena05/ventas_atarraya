@@ -23,7 +23,9 @@ import {
   Filter,
   Download,
   Plus,
-  Minus
+  Minus,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { formatNumber, formatWeight } from "@/lib/utils/formatters";
 
@@ -44,51 +46,99 @@ export function InventarioGeneracionesView() {
   const { estanques: estanquesSupabase, isLoading: loadingEstanques, error } = useEstanques();
   const { sesiones, loading: loadingMuestreos, calcularDatosGeneraciones, obtenerGeneraciones } = useMuestreos();
   const [datos, setDatos] = useState<EstanqueData[]>([]);
-  const [generacionSeleccionada, setGeneracionSeleccionada] = useState<string>("");
+  const [generacionSeleccionada, setGeneracionSeleccionada] = useState<string>("todos");
   const [editandoCelda, setEditandoCelda] = useState<{estanque: string, lance: number} | null>(null);
+  const [muestreosExpandidos, setMuestreosExpandidos] = useState<boolean>(true);
 
   // Generar datos cuando se cargan los estanques y muestreos
   React.useEffect(() => {
     if (estanquesSupabase.length > 0) {
-      if (sesiones.length > 0 && generacionSeleccionada && generacionSeleccionada !== "todos") {
+      if (sesiones.length > 0 && generacionSeleccionada) {
         // Usar datos reales de muestreos para la generación seleccionada
         const datosReales: EstanqueData[] = [];
 
-        estanquesSupabase.forEach((estanque) => {
-          const sesionesEstanque = sesiones.filter(s =>
-            s.generacion === generacionSeleccionada &&
-            s.muestreos[estanque.id.toString()]
-          ).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+        if (generacionSeleccionada === "todos") {
+          // Cuando se selecciona "todos", agrupar por estanque y generación
+          estanquesSupabase.forEach((estanque) => {
+            // Obtener todas las generaciones que tienen datos para este estanque
+            const generacionesConDatos = new Set(
+              sesiones
+                .filter(s => s.muestreos[estanque.id.toString()])
+                .map(s => s.generacion)
+            );
 
-          if (sesionesEstanque.length > 0) {
-            const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
-            const muestreo = sesionReciente.muestreos[estanque.id.toString()];
+            generacionesConDatos.forEach((generacion) => {
+              const sesionesEstanque = sesiones.filter(s => {
+                return s.generacion === generacion && s.muestreos[estanque.id.toString()];
+              }).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
 
-            // Calcular estimación anterior si hay más de una sesión
-            let estimacionAnterior: number | undefined;
-            let ganancia: number | undefined;
+              if (sesionesEstanque.length > 0) {
+                const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
+                const muestreo = sesionReciente.muestreos[estanque.id.toString()];
 
-            if (sesionesEstanque.length > 1) {
-              const sesionAnterior = sesionesEstanque[sesionesEstanque.length - 2];
-              const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
-              if (muestreoAnterior) {
-                estimacionAnterior = muestreoAnterior.biomasa;
-                ganancia = muestreo.biomasa - estimacionAnterior;
+                // Calcular estimación anterior si hay más de una sesión
+                let estimacionAnterior: number | undefined;
+                let ganancia: number | undefined;
+
+                if (sesionesEstanque.length > 1) {
+                  const sesionAnterior = sesionesEstanque[sesionesEstanque.length - 2];
+                  const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
+                  if (muestreoAnterior) {
+                    estimacionAnterior = muestreoAnterior.biomasa;
+                    ganancia = muestreo.biomasa - estimacionAnterior;
+                  }
+                }
+
+                datosReales.push({
+                  estanqueId: estanque.id,
+                  estanque: `${estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`} (Gen ${generacion})`,
+                  lances: muestreo.muestreos || [],
+                  mediana: muestreo.promedio || 0, // Campo 'promedio' contiene la mediana
+                  estimacionActual: muestreo.biomasa || 0,
+                  estimacionAnterior,
+                  ganancia,
+                  cosechaSemanal: muestreo.cosecha || 0
+                });
               }
-            }
-
-            datosReales.push({
-              estanqueId: estanque.id,
-              estanque: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
-              lances: muestreo.muestreos || [],
-              mediana: muestreo.promedio || 0,
-              estimacionActual: muestreo.biomasa || 0,
-              estimacionAnterior,
-              ganancia,
-              cosechaSemanal: muestreo.cosecha || 0
             });
-          }
-        });
+          });
+        } else {
+          // Para una generación específica
+          estanquesSupabase.forEach((estanque) => {
+            const sesionesEstanque = sesiones.filter(s => {
+              return s.generacion === generacionSeleccionada && s.muestreos[estanque.id.toString()];
+            }).sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+
+            if (sesionesEstanque.length > 0) {
+              const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
+              const muestreo = sesionReciente.muestreos[estanque.id.toString()];
+
+              // Calcular estimación anterior si hay más de una sesión
+              let estimacionAnterior: number | undefined;
+              let ganancia: number | undefined;
+
+              if (sesionesEstanque.length > 1) {
+                const sesionAnterior = sesionesEstanque[sesionesEstanque.length - 2];
+                const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
+                if (muestreoAnterior) {
+                  estimacionAnterior = muestreoAnterior.biomasa;
+                  ganancia = muestreo.biomasa - estimacionAnterior;
+                }
+              }
+
+              datosReales.push({
+                estanqueId: estanque.id,
+                estanque: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
+                lances: muestreo.muestreos || [],
+                mediana: muestreo.promedio || 0, // Campo 'promedio' contiene la mediana
+                estimacionActual: muestreo.biomasa || 0,
+                estimacionAnterior,
+                ganancia,
+                cosechaSemanal: muestreo.cosecha || 0
+              });
+            }
+          });
+        }
 
         setDatos(datosReales);
       } else {
@@ -102,10 +152,10 @@ export function InventarioGeneracionesView() {
     return obtenerGeneraciones();
   }, [sesiones, obtenerGeneraciones]);
 
-  // Auto-seleccionar primera generación disponible
+  // Auto-seleccionar primera generación disponible solo si no hay una seleccionada
   React.useEffect(() => {
-    if (generacionesDisponibles.length > 0 && !generacionSeleccionada) {
-      setGeneracionSeleccionada(generacionesDisponibles[0]);
+    if (generacionesDisponibles.length > 0 && generacionSeleccionada === "") {
+      setGeneracionSeleccionada("todos");
     }
   }, [generacionesDisponibles, generacionSeleccionada]);
 
@@ -215,12 +265,12 @@ export function InventarioGeneracionesView() {
       </Card>
 
       {/* Resumen de totales */}
-      {generacionSeleccionada !== "todos" && datosFiltrados.length > 0 && (
+      {generacionSeleccionada && generacionSeleccionada !== "" && datosFiltrados.length > 0 && (
         <Card className="bg-gradient-to-r from-blue-50 to-green-50">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-blue-600" />
-              Resumen - {generacionSeleccionada}
+              Resumen - {generacionSeleccionada === "todos" ? "Todas las Generaciones" : generacionSeleccionada}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -251,17 +301,37 @@ export function InventarioGeneracionesView() {
       {/* Tabla principal */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">
-            Tabla de Muestreos por Estanque
-            {generacionSeleccionada !== "todos" && (
-              <span className="text-sm font-normal text-gray-600 ml-2">
-                - Generación: {generacionSeleccionada}
-              </span>
-            )}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">
+              Tabla de Muestreos por Estanque
+              {generacionSeleccionada && generacionSeleccionada !== "" && (
+                <span className="text-sm font-normal text-gray-600 ml-2">
+                  - {generacionSeleccionada === "todos" ? "Todas las Generaciones" : `Generación: ${generacionSeleccionada}`}
+                </span>
+              )}
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMuestreosExpandidos(!muestreosExpandidos)}
+              className="flex items-center gap-1"
+            >
+              {muestreosExpandidos ? (
+                <>
+                  <ChevronUp className="h-4 w-4" />
+                  Ocultar Lances
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4" />
+                  Mostrar Lances
+                </>
+              )}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          {generacionSeleccionada === "todos" ? (
+          {!generacionSeleccionada ? (
             <div className="text-center py-8">
               <div className="text-gray-500">
                 <Filter className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -275,8 +345,8 @@ export function InventarioGeneracionesView() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-24">Lances</TableHead>
-                    {datosFiltrados.map((estanqueData) => (
-                      <TableHead key={estanqueData.estanqueId} className="text-center min-w-[120px]">
+                    {datosFiltrados.map((estanqueData, index) => (
+                      <TableHead key={`${estanqueData.estanqueId}-${index}`} className="text-center min-w-[120px]">
                         <div className="font-semibold">{estanqueData.estanque}</div>
                         <div className="text-xs text-gray-500">
                           Área: {formatNumber(estanquesSupabase.find(e => e.id === estanqueData.estanqueId)?.area || 540)}m²
@@ -286,14 +356,34 @@ export function InventarioGeneracionesView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* Filas de lances (1-9) */}
-                  {Array.from({ length: 9 }, (_, lanceIdx) => (
+                  {/* Fila de generaciones (solo cuando se muestran todas las generaciones) */}
+                  {generacionSeleccionada === "todos" && (
+                    <TableRow className="bg-purple-50 border-b-2">
+                      <TableCell className="font-bold text-purple-800">
+                        Generación
+                      </TableCell>
+                      {datosFiltrados.map((estanqueData, index) => {
+                        // Extraer la generación del nombre del estanque
+                        const generacion = estanqueData.estanque.match(/\(Gen ([^)]+)\)/)?.[1] || 'N/A';
+                        return (
+                          <TableCell key={`gen-${estanqueData.estanqueId}-${index}`} className="text-center">
+                            <span className="font-bold text-purple-800">
+                              {generacion}
+                            </span>
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  )}
+
+                  {/* Filas de lances (1-9) - Solo se muestran cuando están expandidos */}
+                  {muestreosExpandidos && Array.from({ length: 9 }, (_, lanceIdx) => (
                     <TableRow key={lanceIdx + 1}>
                       <TableCell className="font-medium bg-gray-50">
                         {lanceIdx + 1}
                       </TableCell>
-                      {datosFiltrados.map((estanqueData) => (
-                        <TableCell key={estanqueData.estanqueId} className="text-center">
+                      {datosFiltrados.map((estanqueData, index) => (
+                        <TableCell key={`${estanqueData.estanqueId}-${index}`} className="text-center">
                           <span className="text-sm font-medium">
                             {estanqueData.lances[lanceIdx] ? formatNumber(estanqueData.lances[lanceIdx]) : '0'}
                           </span>
@@ -307,8 +397,8 @@ export function InventarioGeneracionesView() {
                     <TableCell className="font-bold text-yellow-800">
                       Mediana de los puntos
                     </TableCell>
-                    {datosFiltrados.map((estanqueData) => (
-                      <TableCell key={estanqueData.estanqueId} className="text-center">
+                    {datosFiltrados.map((estanqueData, index) => (
+                      <TableCell key={`${estanqueData.estanqueId}-${index}`} className="text-center">
                         <span className="font-bold text-yellow-800">
                           {formatNumber(estanqueData.mediana)}
                         </span>
@@ -321,8 +411,8 @@ export function InventarioGeneracionesView() {
                     <TableCell className="font-bold text-green-800">
                       ESTIMACIÓN ACTUAL (KG)
                     </TableCell>
-                    {datosFiltrados.map((estanqueData) => (
-                      <TableCell key={estanqueData.estanqueId} className="text-center">
+                    {datosFiltrados.map((estanqueData, index) => (
+                      <TableCell key={`${estanqueData.estanqueId}-${index}`} className="text-center">
                         <span className="font-bold text-green-800">
                           {formatNumber(estanqueData.estimacionActual)}
                         </span>
@@ -335,8 +425,8 @@ export function InventarioGeneracionesView() {
                     <TableCell className="font-bold text-blue-800">
                       ESTIMACIÓN ANTERIOR (KG)
                     </TableCell>
-                    {datosFiltrados.map((estanqueData) => (
-                      <TableCell key={estanqueData.estanqueId} className="text-center">
+                    {datosFiltrados.map((estanqueData, index) => (
+                      <TableCell key={`${estanqueData.estanqueId}-${index}`} className="text-center">
                         <span className="font-bold text-blue-800">
                           {estanqueData.estimacionAnterior ? formatNumber(estanqueData.estimacionAnterior) : '-'}
                         </span>
@@ -349,8 +439,8 @@ export function InventarioGeneracionesView() {
                     <TableCell className="font-bold text-yellow-800">
                       Ganancia
                     </TableCell>
-                    {datosFiltrados.map((estanqueData) => (
-                      <TableCell key={estanqueData.estanqueId} className="text-center">
+                    {datosFiltrados.map((estanqueData, index) => (
+                      <TableCell key={`${estanqueData.estanqueId}-${index}`} className="text-center">
                         <span className={`font-bold ${
                           estanqueData.ganancia && estanqueData.ganancia > 0 ? 'text-green-600' :
                           estanqueData.ganancia && estanqueData.ganancia < 0 ? 'text-red-600' : 'text-gray-500'
@@ -369,8 +459,8 @@ export function InventarioGeneracionesView() {
                     <TableCell className="font-medium">
                       COSECHA SEMANAL
                     </TableCell>
-                    {datosFiltrados.map((estanqueData) => (
-                      <TableCell key={estanqueData.estanqueId} className="text-center">
+                    {datosFiltrados.map((estanqueData, index) => (
+                      <TableCell key={`${estanqueData.estanqueId}-${index}`} className="text-center">
                         <span className="font-medium">
                           {estanqueData.cosechaSemanal > 0 ? formatNumber(estanqueData.cosechaSemanal) : '0'}
                         </span>

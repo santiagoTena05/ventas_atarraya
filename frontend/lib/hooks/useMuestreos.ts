@@ -102,7 +102,7 @@ export function useMuestreos() {
             muestreos[detalle.estanque_id.toString()] = {
               estanqueId: detalle.estanque_id,
               muestreos: detalle.muestreos || [],
-              promedio: detalle.promedio || 0,
+              promedio: detalle.mediana || 0, // Ahora lee el campo 'mediana' de la BD
               biomasa: detalle.biomasa || 0,
               cosecha: detalle.cosecha || 0
             };
@@ -175,7 +175,7 @@ export function useMuestreos() {
         sesion_id: sesionData.id,
         estanque_id: parseInt(estanqueId),
         muestreos: muestreo.muestreos,
-        promedio: muestreo.promedio,
+        mediana: muestreo.promedio, // Guardamos en el campo 'mediana' de la BD
         biomasa: muestreo.biomasa,
         cosecha: muestreo.cosecha || 0
       }));

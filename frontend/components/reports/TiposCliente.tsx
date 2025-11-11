@@ -175,7 +175,7 @@ export function TiposCliente({ salesHook, dateRange }: TiposClienteProps) {
                     <div
                       className="h-full rounded-lg transition-all duration-500 ease-out"
                       style={{
-                        backgroundColor: item.color,
+                        background: `linear-gradient(180deg, ${item.color} 5%, ${item.color}80 95%)`,
                         width: `${(item.monto / montoMaximo) * 100}%`
                       }}
                     />

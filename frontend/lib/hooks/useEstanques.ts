@@ -87,7 +87,9 @@ export function useEstanques() {
   // Calcular biomasa por área
   const calcularBiomasa = (promedioGramos: number, area: number = 540) => {
     // Convertir de gramos a kilogramos y multiplicar por área
-    return (promedioGramos / 1000) * area;
+    const biomasaCalculada = (promedioGramos / 1000) * area;
+    // Redondear normalmente (0.5 hacia arriba)
+    return Math.round(biomasaCalculada);
   };
 
   // Recargar datos

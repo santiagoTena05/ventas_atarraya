@@ -117,6 +117,7 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
     return null;
   };
 
+
   if (loadingMuestreos || loadingCosechas) {
     return (
       <Card>
@@ -158,7 +159,7 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
       <CardContent>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+            <AreaChart data={chartData} margin={{ top: 70, right: 30, left: 20, bottom: 60 }}>
               <defs>
                 <linearGradient id="biomassGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#1f9a93" stopOpacity={0.8}/>
@@ -203,7 +204,7 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
               <Area
                 type="monotone"
                 dataKey="harvested"
-                stackId="2"
+                stackId="1"
                 stroke="#20c997"
                 fill="url(#harvestedGradient)"
                 strokeWidth={2}

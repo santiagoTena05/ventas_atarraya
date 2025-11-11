@@ -82,7 +82,7 @@ export function InventarioCalculosView() {
             const ciclo = numeroGeneracion;
 
             // Calcular métricas basadas en datos reales
-            const averageSize = muestreo.promedio || 0;
+            const averageSize = muestreo.promedio || 0; // Campo 'promedio' contiene la mediana
             const biomass = muestreo.biomasa || 0;
             const area = estanque.area || 540;
             const productivity = biomass / area;

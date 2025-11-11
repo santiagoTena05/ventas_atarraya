@@ -330,6 +330,14 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
+                  <defs>
+                    {ventasPorProducto.map((entry, index) => (
+                      <linearGradient key={`gradient-${index}`} id={`pieGradient-${index}`} x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="5%" stopColor={entry.color} stopOpacity={1}/>
+                        <stop offset="95%" stopColor={entry.color} stopOpacity={0.8}/>
+                      </linearGradient>
+                    ))}
+                  </defs>
                   <Pie
                     data={ventasPorProducto}
                     cx="50%"
@@ -340,7 +348,7 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
                     label={({producto, percent}) => `${producto} ${(percent * 100).toFixed(0)}%`}
                   >
                     {ventasPorProducto.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={`cell-${index}`} fill={`url(#pieGradient-${index})`} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(value: number) => [formatCurrency(value), 'Monto']} />
@@ -359,6 +367,20 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={datosGraficoOficinas}>
+                  <defs>
+                    <linearGradient id="enteroGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1f9a93" stopOpacity={1}/>
+                      <stop offset="95%" stopColor="#1f9a93" stopOpacity={0.8}/>
+                    </linearGradient>
+                    <linearGradient id="padGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#17a2b8" stopOpacity={1}/>
+                      <stop offset="95%" stopColor="#17a2b8" stopOpacity={0.8}/>
+                    </linearGradient>
+                    <linearGradient id="larvasGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6f42c1" stopOpacity={1}/>
+                      <stop offset="95%" stopColor="#6f42c1" stopOpacity={0.8}/>
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="name"
@@ -373,9 +395,9 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
                     labelFormatter={(label) => `Oficina: ${label}`}
                   />
                   <Legend />
-                  <Bar dataKey="entero" name="Entero" fill="#1f9a93" />
-                  <Bar dataKey="pad" name="PAD" fill="#17a2b8" />
-                  <Bar dataKey="larvas" name="Larvas" fill="#6f42c1" />
+                  <Bar dataKey="entero" name="Entero" fill="url(#enteroGradient)" />
+                  <Bar dataKey="pad" name="PAD" fill="url(#padGradient)" />
+                  <Bar dataKey="larvas" name="Larvas" fill="url(#larvasGradient)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -509,6 +531,16 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={datosGraficoTallas}>
+                  <defs>
+                    <linearGradient id="enteroGradient2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#1f9a93" stopOpacity={1}/>
+                      <stop offset="95%" stopColor="#1f9a93" stopOpacity={0.8}/>
+                    </linearGradient>
+                    <linearGradient id="padGradient2" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#17a2b8" stopOpacity={1}/>
+                      <stop offset="95%" stopColor="#17a2b8" stopOpacity={0.8}/>
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis
                     dataKey="name"
@@ -524,8 +556,8 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
                       name === 'precio' ? 'Precio Promedio' : name
                     ]}
                   />
-                  <Bar dataKey="entero" name="Entero" fill="#1f9a93" />
-                  <Bar dataKey="pad" name="PAD" fill="#17a2b8" />
+                  <Bar dataKey="entero" name="Entero" fill="url(#enteroGradient2)" />
+                  <Bar dataKey="pad" name="PAD" fill="url(#padGradient2)" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

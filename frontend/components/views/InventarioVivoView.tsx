@@ -139,13 +139,13 @@ export function InventarioVivoView() {
 
     Object.entries(sesionActual.muestreos).forEach(([estanqueId, datos]) => {
       const estanque = estanques.find(e => e.id === estanqueId);
-      const promedio = calcularPromedio(datos.valores);
+      const mediana = calcularMediana(datos.valores);
 
       muestreosTransformados[estanqueId] = {
         estanqueId: parseInt(estanqueId),
         muestreos: datos.valores,
-        promedio,
-        biomasa: calcularBiomasa(promedio, estanque?.area || 540),
+        promedio: mediana, // Mantenemos el nombre 'promedio' por compatibilidad con la interfaz MuestreoEstanque
+        biomasa: calcularBiomasa(mediana, estanque?.area || 540),
         cosecha: datos.cosecha
       };
     });
@@ -184,14 +184,27 @@ export function InventarioVivoView() {
   };
 
 
-  const calcularPromedio = (vals: number[]) => {
+  const calcularMediana = (vals: number[]) => {
     if (vals.length === 0) return 0;
-    return vals.reduce((sum, val) => sum + val, 0) / vals.length;
+
+    // Ordenar valores de menor a mayor
+    const sortedVals = [...vals].sort((a, b) => a - b);
+    const middle = Math.floor(sortedVals.length / 2);
+
+    // Si la cantidad es impar, tomar el valor del medio
+    if (sortedVals.length % 2 === 1) {
+      return sortedVals[middle];
+    }
+
+    // Si la cantidad es par, tomar el promedio de los dos valores centrales
+    return (sortedVals[middle - 1] + sortedVals[middle]) / 2;
   };
 
-  const calcularBiomasa = (promedio: number, area: number) => {
+  const calcularBiomasa = (mediana: number, area: number) => {
     // Convertir de gramos a kg y multiplicar por área
-    return (promedio / 1000) * area;
+    const biomasaCalculada = (mediana / 1000) * area;
+    // Redondear normalmente (0.5 hacia arriba)
+    return Math.round(biomasaCalculada);
   };
 
   const abrirModal = (estanque: EstanqueLocal) => {
@@ -241,8 +254,11 @@ export function InventarioVivoView() {
     setModoRegistroCosecha(false);
   };
 
-  const completarEstanque = () => {
+  const completarEstanque = (cosechaValue?: number) => {
     if (!estanqueActual || !sesionActual) return;
+
+    // Usar el valor proporcionado o el estado actual de cosecha
+    const valorCosecha = cosechaValue !== undefined ? cosechaValue : cosecha;
 
     // Guardar datos del estanque en la sesión
     const nuevosSesionActual = {
@@ -251,7 +267,7 @@ export function InventarioVivoView() {
         ...sesionActual.muestreos,
         [estanqueActual.id]: {
           valores: [...valores],
-          cosecha: cosecha
+          cosecha: valorCosecha
         }
       }
     };
@@ -302,8 +318,9 @@ export function InventarioVivoView() {
     if (e.key === 'Enter') {
       e.preventDefault();
       const valor = parseFloat((e.target as HTMLInputElement).value);
-      setCosecha(valor || 0);
-      completarEstanque();
+      const valorCosecha = valor || 0;
+      setCosecha(valorCosecha);
+      completarEstanque(valorCosecha); // Pasar directamente el valor
     }
   };
 
@@ -501,8 +518,8 @@ export function InventarioVivoView() {
   }
 
   const progreso = (valores.length / 9) * 100;
-  const promedio = calcularPromedio(valores);
-  const biomasa = estanqueActual ? calcularBiomasa(promedio, estanqueActual.area) : 0;
+  const mediana = calcularMediana(valores);
+  const biomasa = estanqueActual ? calcularBiomasa(mediana, estanqueActual.area) : 0;
 
   return (
     <div className="space-y-6 p-6">
@@ -680,8 +697,8 @@ export function InventarioVivoView() {
                           <span className="font-medium">{valores.length}/9</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Promedio actual:</span>
-                          <span className="font-medium">{promedio.toFixed(1)}g</span>
+                          <span className="text-gray-600">Mediana actual:</span>
+                          <span className="font-medium">{mediana.toFixed(1)}g</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Biomasa estimada:</span>
@@ -717,8 +734,8 @@ export function InventarioVivoView() {
                   </div>
                   <div className="bg-green-50 p-4 rounded-lg space-y-2">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Promedio final:</span>
-                      <span className="font-bold text-green-700">{promedio.toFixed(1)}g</span>
+                      <span className="text-gray-600">Mediana final:</span>
+                      <span className="font-bold text-green-700">{mediana.toFixed(1)}g</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Biomasa total:</span>
@@ -749,7 +766,7 @@ export function InventarioVivoView() {
                   <Button
                     variant="outline"
                     className="flex-1"
-                    onClick={completarEstanque}
+                    onClick={() => completarEstanque(0)}
                   >
                     Omitir cosecha
                   </Button>
