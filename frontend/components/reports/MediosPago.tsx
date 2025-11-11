@@ -30,12 +30,12 @@ const PERIOD_OPTIONS = [
 
 // Colores específicos para cada método de pago
 const PAYMENT_COLORS: Record<string, string> = {
-  'Efectivo': '#E57367',        // Naranja/rojo
-  'Tarjeta': '#3F51B5',         // Azul marino
-  'Transferencia': '#9C27B0',   // Púrpura
-  'Cheque': '#4CAF50',          // Verde
-  'Cortesía': '#FF9800',        // Naranja
-  'Sin método': '#757575'       // Gris
+  'Efectivo': '#1f9a93',        // Teal principal
+  'Tarjeta': '#17a2b8',         // Teal claro
+  'Transferencia': '#6f42c1',   // Púrpura
+  'Cheque': '#20c997',          // Verde agua
+  'Cortesía': '#0d6efd',        // Azul
+  'Sin método': '#6c757d'       // Gris
 };
 
 export function MediosPago({ salesHook, dateRange }: MediosPagoProps) {

@@ -20,6 +20,7 @@ import {
 import { EvolucionVentas } from "./EvolucionVentas";
 import { MediosPago } from "./MediosPago";
 import { TiposCliente } from "./TiposCliente";
+import { BiomassHarvestedChart } from "./BiomassHarvestedChart";
 
 interface ReportesVentasProps {
   salesHook: ReturnType<typeof useSales>;
@@ -531,6 +532,9 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Biomass vs Harvested Chart */}
+      <BiomassHarvestedChart dateRange={dateRange} />
     </div>
   );
 }

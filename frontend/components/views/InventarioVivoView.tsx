@@ -44,7 +44,6 @@ export function InventarioVivoView() {
   const [sesionIniciada, setSesionIniciada] = useState(false);
   const [fechaSeleccionada, setFechaSeleccionada] = useState('');
   const [generacionSeleccionada, setGeneracionSeleccionada] = useState('');
-  const [semanaSeleccionada, setSemanaSeleccionada] = useState<number>(1);
 
   // Estados para el registro de muestreos
   const [sesionActual, setSesionActual] = useState<SesionRegistro | null>(null);
@@ -74,14 +73,26 @@ export function InventarioVivoView() {
   const estanquesActivos = estanques.filter(e => e.activo);
   const estanquesCompletados = estanques.filter(e => e.completado).length;
 
+  // Función para calcular la semana del año basada en la fecha
+  const calcularSemanaDelAno = (fecha: string): number => {
+    if (!fecha) return 1;
+
+    const fechaObj = new Date(fecha);
+    const oneJan = new Date(fechaObj.getFullYear(), 0, 1);
+    const numberOfDays = Math.floor((fechaObj.getTime() - oneJan.getTime()) / (24 * 60 * 60 * 1000));
+    return Math.ceil((numberOfDays + oneJan.getDay() + 1) / 7);
+  };
+
   // Función para iniciar sesión de registro
   const iniciarSesion = () => {
     if (!fechaSeleccionada || !generacionSeleccionada) return;
 
+    const semanaCalculada = calcularSemanaDelAno(fechaSeleccionada);
+
     const nuevaSesion: SesionRegistro = {
       fecha: fechaSeleccionada,
       generacion: generacionSeleccionada,
-      semana: semanaSeleccionada,
+      semana: semanaCalculada,
       muestreos: {}
     };
 
@@ -161,7 +172,6 @@ export function InventarioVivoView() {
       setSesionActual(null);
       setFechaSeleccionada('');
       setGeneracionSeleccionada('');
-      setSemanaSeleccionada(1);
       setEstanques(prev => prev.map(e => ({ ...e, completado: false })));
     } else {
       alert('Error al guardar la sesión. Inténtalo de nuevo.');
@@ -383,19 +393,24 @@ export function InventarioVivoView() {
                 />
               </div>
 
-              <div>
-                <Label htmlFor="semana">Semana de Cultivo</Label>
-                <Input
-                  id="semana"
-                  type="number"
-                  min="1"
-                  max="30"
-                  value={semanaSeleccionada}
-                  onChange={(e) => setSemanaSeleccionada(parseInt(e.target.value) || 1)}
-                  className="mt-1"
-                  placeholder="Número de semana (ej: 1, 2, 3...)"
-                />
-              </div>
+              {fechaSeleccionada && (
+                <div>
+                  <Label>Semana del Año (Calculada Automáticamente)</Label>
+                  <div className="mt-1 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-blue-700">
+                        Semana {calcularSemanaDelAno(fechaSeleccionada)} del {new Date(fechaSeleccionada).getFullYear()}
+                      </span>
+                      <span className="text-xs text-blue-600">
+                        Automático
+                      </span>
+                    </div>
+                    <div className="text-xs text-blue-600 mt-1">
+                      Calculada basada en la fecha seleccionada
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <Button
                 onClick={iniciarSesion}

@@ -30,12 +30,13 @@ const PERIOD_OPTIONS = [
 
 // Colores específicos para cada tipo de cliente
 const CLIENT_COLORS: Record<string, string> = {
-  'Mayorista': '#2E7D32',        // Verde
-  'Minorista': '#1976D2',        // Azul
-  'Distribuidor': '#7B1FA2',     // Púrpura
-  'Corporativo': '#F57C00',      // Naranja
-  'Cliente directo': '#D32F2F',  // Rojo
-  'Sin tipo': '#757575'          // Gris
+  'Mayorista': '#6c757d',        // Gris
+  'Minorista': '#1f9a93',        // Teal principal
+  'Distribuidor': '#17a2b8',     // Teal claro
+  'Corporativo': '#20c997',      // Verde agua
+  'Cliente directo': '#6f42c1',  // Púrpura
+  'Restaurante': '#6c757d',      // Gris
+  'Sin tipo': '#6c757d'          // Gris
 };
 
 export function TiposCliente({ salesHook, dateRange }: TiposClienteProps) {
