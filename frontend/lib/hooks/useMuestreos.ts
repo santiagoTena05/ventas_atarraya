@@ -10,12 +10,18 @@ export interface MuestreoEstanque {
   promedio: number;
   biomasa: number;
   cosecha?: number;
+  averageSize?: number;
+  muestreosSeleccionadosParaAverage?: number[];
+  conteosCamarones?: {[key: number]: number};
+  semanaCultivo?: number;
+  poblacionCosechada?: number;
 }
 
 export interface SesionRegistro {
   id: string;
   fecha: string;
   generacion: string;
+  generacionId: string;
   semana?: number;
   muestreos: { [estanqueId: string]: MuestreoEstanque };
   fechaRegistro: Date;
@@ -46,6 +52,11 @@ export interface MuestreosDetalle {
   biomasa: number;
   cosecha: number;
   observaciones?: string;
+  average_size?: number;
+  muestreos_seleccionados_average?: number[];
+  conteos_camarones?: {[key: number]: number};
+  semana_cultivo?: number;
+  poblacion_cosechada?: number;
   created_at: string;
   updated_at: string;
 }
@@ -61,7 +72,6 @@ export function useMuestreos() {
     try {
       setLoading(true);
       setError(null);
-      console.log('🔄 Cargando sesiones de muestreos desde Supabase...');
 
       const { data: sesionesData, error: sesionesError } = await supabase
         .from('muestreos_sesiones')
@@ -75,7 +85,6 @@ export function useMuestreos() {
         .order('fecha', { ascending: false });
 
       if (sesionesError) {
-        console.error('❌ Error cargando sesiones:', sesionesError);
         setError('Error cargando sesiones');
         return;
       }
@@ -88,7 +97,6 @@ export function useMuestreos() {
           .in('sesion_id', sesionesData.map(s => s.id));
 
         if (detallesError) {
-          console.error('❌ Error cargando detalles:', detallesError);
           setError('Error cargando detalles de muestreos');
           return;
         }
@@ -104,7 +112,12 @@ export function useMuestreos() {
               muestreos: detalle.muestreos || [],
               promedio: detalle.mediana || 0, // Ahora lee el campo 'mediana' de la BD
               biomasa: detalle.biomasa || 0,
-              cosecha: detalle.cosecha || 0
+              cosecha: detalle.cosecha || 0,
+              averageSize: detalle.average_size || null,
+              muestreosSeleccionadosParaAverage: detalle.muestreos_seleccionados_average || null,
+              conteosCamarones: detalle.conteos_camarones || null,
+              semanaCultivo: detalle.semana_cultivo || null,
+              poblacionCosechada: detalle.poblacion_cosechada || null
             };
           });
 
@@ -112,6 +125,7 @@ export function useMuestreos() {
             id: sesion.id,
             fecha: sesion.fecha,
             generacion: sesion.generaciones?.codigo || 'N/A',
+            generacionId: sesion.generacion_id,
             semana: sesion.semana,
             muestreos,
             fechaRegistro: new Date(sesion.created_at),
@@ -120,13 +134,10 @@ export function useMuestreos() {
         });
 
         setSesiones(sesionesTransformadas);
-        console.log(`✅ Cargadas ${sesionesTransformadas.length} sesiones de muestreos`);
       } else {
         setSesiones([]);
-        console.log('📋 No hay sesiones de muestreos registradas');
       }
     } catch (error) {
-      console.error('❌ Error cargando muestreos:', error);
       setError('Error de conexión');
       setSesiones([]);
     } finally {
@@ -137,12 +148,10 @@ export function useMuestreos() {
   // Guardar nueva sesión en Supabase
   const guardarSesion = async (sesion: Omit<SesionRegistro, 'id' | 'fechaRegistro'>) => {
     try {
-      console.log('🔄 Guardando sesión de muestreos...');
 
       // Buscar o crear generación
       let generacion = getGeneracionByCodigo(sesion.generacion);
       if (!generacion) {
-        console.log('🔄 Creando nueva generación:', sesion.generacion);
         generacion = await crearGeneracion({
           codigo: sesion.generacion,
           estado: 'activa'
@@ -166,36 +175,70 @@ export function useMuestreos() {
         .single();
 
       if (sesionError) {
-        console.error('❌ Error creando sesión:', sesionError);
         throw new Error('Error creando sesión');
       }
 
-      // Crear detalles de muestreos
-      const detalles = Object.entries(sesion.muestreos).map(([estanqueId, muestreo]) => ({
-        sesion_id: sesionData.id,
-        estanque_id: parseInt(estanqueId),
-        muestreos: muestreo.muestreos,
-        mediana: muestreo.promedio, // Guardamos en el campo 'mediana' de la BD
-        biomasa: muestreo.biomasa,
-        cosecha: muestreo.cosecha || 0
-      }));
+      // Crear detalles de muestreos con cálculo de semana de cultivo
+      const detalles = await Promise.all(
+        Object.entries(sesion.muestreos).map(async ([estanqueId, muestreo]) => {
+          // Calcular semana de cultivo basándose en muestreos anteriores del mismo estanque
+          let semanaCultivo = 1; // Default para primer muestreo
+
+          // Buscar el muestreo más reciente del mismo estanque y generación
+          const { data: muestreosAnteriores } = await supabase
+            .from('muestreos_detalle')
+            .select(`
+              semana_cultivo,
+              created_at,
+              muestreos_sesiones!inner (
+                generacion_id
+              )
+            `)
+            .eq('estanque_id', parseInt(estanqueId))
+            .eq('muestreos_sesiones.generacion_id', generacion.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          if (muestreosAnteriores && muestreosAnteriores.length > 0) {
+            const ultimoMuestreo = muestreosAnteriores[0];
+            semanaCultivo = (ultimoMuestreo.semana_cultivo || 0) + 1;
+          }
+
+          // Calcular población cosechada SOLO si hay cosecha Y average size específico
+          let poblacionCosechada = null;
+          if ((muestreo.cosecha || 0) > 0 && muestreo.averageSize && muestreo.averageSize > 0) {
+            poblacionCosechada = Math.round(((muestreo.cosecha || 0) * 1000) / muestreo.averageSize);
+          }
+
+          return {
+            sesion_id: sesionData.id,
+            estanque_id: parseInt(estanqueId),
+            muestreos: muestreo.muestreos,
+            mediana: muestreo.promedio, // Guardamos en el campo 'mediana' de la BD
+            biomasa: muestreo.biomasa,
+            cosecha: muestreo.cosecha || 0,
+            average_size: muestreo.averageSize || null,
+            muestreos_seleccionados_average: muestreo.muestreosSeleccionadosParaAverage || null,
+            conteos_camarones: muestreo.conteosCamarones || null,
+            semana_cultivo: semanaCultivo,
+            poblacion_cosechada: poblacionCosechada
+          };
+        })
+      );
 
       const { error: detallesError } = await supabase
         .from('muestreos_detalle')
         .insert(detalles);
 
       if (detallesError) {
-        console.error('❌ Error creando detalles:', detallesError);
         throw new Error('Error guardando detalles de muestreos');
       }
 
-      console.log('✅ Sesión guardada exitosamente');
 
       // Recargar sesiones
       await loadSesiones();
       return true;
     } catch (error) {
-      console.error('❌ Error guardando sesión:', error);
       setError('Error guardando sesión');
       return false;
     }

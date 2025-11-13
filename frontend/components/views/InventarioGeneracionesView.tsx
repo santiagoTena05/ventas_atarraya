@@ -89,12 +89,16 @@ export function InventarioGeneracionesView() {
                   }
                 }
 
+                // Aplicar regla: si biomasa > 100kg, sumar 50kg adicionales
+                const biomasaBase = muestreo.biomasa || 0;
+                const estimacionFinal = biomasaBase > 100 ? biomasaBase + 50 : biomasaBase;
+
                 datosReales.push({
                   estanqueId: estanque.id,
                   estanque: `${estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`} (Gen ${generacion})`,
                   lances: muestreo.muestreos || [],
                   mediana: muestreo.promedio || 0, // Campo 'promedio' contiene la mediana
-                  estimacionActual: muestreo.biomasa || 0,
+                  estimacionActual: estimacionFinal,
                   estimacionAnterior,
                   ganancia,
                   cosechaSemanal: muestreo.cosecha || 0
@@ -126,12 +130,16 @@ export function InventarioGeneracionesView() {
                 }
               }
 
+              // Aplicar regla: si biomasa > 100kg, sumar 50kg adicionales
+              const biomasaBase = muestreo.biomasa || 0;
+              const estimacionFinal = biomasaBase > 100 ? biomasaBase + 50 : biomasaBase;
+
               datosReales.push({
                 estanqueId: estanque.id,
                 estanque: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
                 lances: muestreo.muestreos || [],
                 mediana: muestreo.promedio || 0, // Campo 'promedio' contiene la mediana
-                estimacionActual: muestreo.biomasa || 0,
+                estimacionActual: estimacionFinal,
                 estimacionAnterior,
                 ganancia,
                 cosechaSemanal: muestreo.cosecha || 0

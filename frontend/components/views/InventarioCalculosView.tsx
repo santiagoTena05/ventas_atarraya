@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useEstanques } from "@/lib/hooks/useEstanques";
 import { useMuestreos } from "@/lib/hooks/useMuestreos";
+import { usePoblacionesIniciales } from "@/lib/hooks/usePoblacionesIniciales";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +42,9 @@ interface CalculoCompleto {
   harvested: number;
   hWeek: number;
   estado: 'activo' | 'cosecha' | 'preparacion';
+  fecha: string;
+  semana: number;
+  generacion: string;
 }
 
 
@@ -50,15 +54,15 @@ type SortDirection = 'asc' | 'desc';
 export function InventarioCalculosView() {
   const { estanques: estanquesSupabase, isLoading: loadingEstanques, error } = useEstanques();
   const { sesiones, loading: loadingMuestreos, obtenerGeneraciones } = useMuestreos();
+  const { obtenerPoblacionInicial, loading: loadingPoblaciones } = usePoblacionesIniciales();
   const [calculos, setCalculos] = useState<CalculoCompleto[]>([]);
-  const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [filtroCiclo, setFiltroCiclo] = useState<string>("todos");
   const [sortField, setSortField] = useState<SortField>('ciclo');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // Generar datos cuando se cargan los estanques y muestreos
+  // Generar datos cuando se cargan los estanques, muestreos y poblaciones iniciales
   React.useEffect(() => {
-    if (estanquesSupabase.length > 0 && sesiones.length > 0) {
+    if (estanquesSupabase.length > 0 && sesiones.length > 0 && !loadingPoblaciones) {
       // Usar datos reales de muestreos para generar cálculos
       const calculosReales: CalculoCompleto[] = [];
       const generacionesSet = new Set(sesiones.map(s => s.generacion));
@@ -73,52 +77,95 @@ export function InventarioCalculosView() {
             )
             .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
 
-          if (sesionesEstanque.length > 0) {
-            const sesionReciente = sesionesEstanque[sesionesEstanque.length - 1];
-            const muestreo = sesionReciente.muestreos[estanque.id.toString()];
+          // Crear cálculos para cada sesión de este estanque en esta generación
+          sesionesEstanque.forEach((sesion, indiceSesion) => {
+            const muestreo = sesion.muestreos[estanque.id.toString()];
+            if (!muestreo) return;
 
             // Extraer número de generación para calcular ciclo
             const numeroGeneracion = parseInt(generacion.replace('G-', ''));
             const ciclo = numeroGeneracion;
 
             // Calcular métricas basadas en datos reales
-            const averageSize = muestreo.promedio || 0; // Campo 'promedio' contiene la mediana
+            // Usar averageSize calculado con camarones si está disponible, sino usar promedio/mediana
+            const averageSize = muestreo.averageSize || muestreo.promedio || 0;
             const biomass = muestreo.biomasa || 0;
-            const area = estanque.area || 540;
-            const productivity = biomass / area;
 
-            // Calcular biomass increase basado en sesiones anteriores
+            // Calcular total de biomasa cosechada hasta esta sesión (acumulativa)
+            const biomasaCosechadaTotal = sesionesEstanque.slice(0, indiceSesion + 1).reduce((suma, sesionAnterior) => {
+              const muestreoSesion = sesionAnterior.muestreos[estanque.id.toString()];
+              return suma + (muestreoSesion?.cosecha || 0);
+            }, 0);
+
+            const area = estanque.area || 540;
+            const productivity = (biomass + biomasaCosechadaTotal) / area;
+
+            // Calcular biomass increase basado en sesión anterior
             let biomassIncrease = 0;
-            if (sesionesEstanque.length > 1) {
-              const sesionAnterior = sesionesEstanque[sesionesEstanque.length - 2];
+            if (indiceSesion > 0) {
+              const sesionAnterior = sesionesEstanque[indiceSesion - 1];
               const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
               if (muestreoAnterior) {
                 biomassIncrease = biomass - (muestreoAnterior.biomasa || 0);
               }
             }
 
-            // Estimaciones adicionales
-            const population = averageSize > 0 ? Math.round((biomass * 1000) / averageSize) : 0;
-            const survivalRate = Math.min(0.9, Math.max(0.3, 0.3 + (productivity * 0.3)));
-            const growth = averageSize > 0 ? Math.max(0.5, averageSize / 15) : 1.0;
-
-            // Calcular semanas de cultivo basado en semana de la sesión
-            const cultureWeeks = sesionReciente.semana || Math.floor(8 + (numeroGeneracion - 60) * 2);
-
-            // Integrar datos de cosecha reales
-            const harvested = muestreo.cosecha || 0;
-            const hWeek = harvested > 0 ? cultureWeeks : 0;
-
-            // Determinar estado basado en métricas reales
-            let estado: 'activo' | 'cosecha' | 'preparacion' = 'activo';
-            if (harvested > 0 || averageSize > 20) {
-              estado = 'cosecha';
-            } else if (averageSize < 8 || cultureWeeks < 4) {
-              estado = 'preparacion';
+            // Calcular growth basado en diferencia de average size
+            let growth = 0;
+            if (indiceSesion > 0) {
+              const sesionAnterior = sesionesEstanque[indiceSesion - 1];
+              const muestreoAnterior = sesionAnterior.muestreos[estanque.id.toString()];
+              if (muestreoAnterior) {
+                const averageSizeAnterior = muestreoAnterior.averageSize || muestreoAnterior.promedio || 0;
+                growth = averageSize - averageSizeAnterior;
+              }
             }
 
+            // Estimaciones adicionales
+            const population = averageSize > 0 ? Math.round((biomass * 1000) / averageSize) : 0;
+
+            // Calcular Survival Rate: (Población Actual + Población Cosechada) / Población Inicial * 100
+            let survivalRate = 0;
+
+            // Calcular poblaciones cosechadas hasta esta sesión (acumulativa)
+            const poblacionesTotalesCosechadas = sesionesEstanque.slice(0, indiceSesion + 1).reduce((suma, sesionAnterior) => {
+              const muestreoSesion = sesionAnterior.muestreos[estanque.id.toString()];
+              if (muestreoSesion && (muestreoSesion.cosecha || 0) > 0) {
+                const cosechaKg = muestreoSesion.cosecha || 0;
+                const averageSizeGramos = muestreoSesion.averageSize || muestreoSesion.promedio || 0;
+                if (averageSizeGramos > 0) {
+                  // Convertir kg a gramos, luego dividir por peso promedio por camarón
+                  const poblacionCosechada = Math.round((cosechaKg * 1000) / averageSizeGramos);
+                  return suma + poblacionCosechada;
+                }
+              }
+              return suma;
+            }, 0);
+
+            // Obtener población inicial desde la tabla poblaciones_iniciales
+            const generacionId = sesion.generacionId;
+            const poblacionInicial = obtenerPoblacionInicial(estanque.id, generacionId) || 0;
+
+            if (poblacionInicial > 0) {
+              survivalRate = ((population + poblacionesTotalesCosechadas) / poblacionInicial) * 100;
+            }
+
+            // Usar semana de cultivo desde la base de datos
+            const cultureWeeks = muestreo.semanaCultivo || 1;
+
+            // Integrar datos de cosecha reales
+            const weeklyHarvest = muestreo.cosecha || 0; // Cosecha de la semana actual
+            const totalHarvested = 0; // TODO: Cuando se implemente, calcular total acumulado de la generación
+
+            // Intercambiar: harvested = cosecha semanal, hWeek = total acumulado
+            const harvested = weeklyHarvest;
+            const hWeek = totalHarvested;
+
+            // Estado removido de la tabla
+            const estado = 'activo'; // No se usa más pero mantenemos para compatibilidad
+
             calculosReales.push({
-              id: `${ciclo}-${estanque.id}`,
+              id: `${ciclo}-${estanque.id}-${sesion.fecha}`,
               ciclo,
               tank: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
               averageSize,
@@ -131,9 +178,12 @@ export function InventarioCalculosView() {
               cultureWeeks,
               harvested,
               hWeek,
-              estado
+              estado,
+              fecha: sesion.fecha,
+              semana: sesion.semana || 0,
+              generacion: generacion
             });
-          }
+          });
         });
       });
 
@@ -142,7 +192,7 @@ export function InventarioCalculosView() {
       // Mostrar array vacío si no hay datos
       setCalculos([]);
     }
-  }, [estanquesSupabase, sesiones]);
+  }, [estanquesSupabase, sesiones, loadingPoblaciones]);
 
   const ciclosUnicos = useMemo(() => {
     const ciclos = Array.from(new Set(calculos.map(c => c.ciclo)));
@@ -151,11 +201,6 @@ export function InventarioCalculosView() {
 
   const calculosFiltrados = useMemo(() => {
     let filtered = calculos;
-
-    // Filtro por estado
-    if (filtroEstado !== "todos") {
-      filtered = filtered.filter(c => c.estado === filtroEstado);
-    }
 
     // Filtro por ciclo
     if (filtroCiclo !== "todos") {
@@ -202,7 +247,92 @@ export function InventarioCalculosView() {
     });
 
     return filtered;
-  }, [calculos, filtroEstado, filtroCiclo, sortField, sortDirection]);
+  }, [calculos, filtroCiclo, sortField, sortDirection]);
+
+  // Agrupar cálculos por fecha
+  const calculosAgrupados = useMemo(() => {
+    const grupos: { [fecha: string]: CalculoCompleto[] } = {};
+
+    calculosFiltrados.forEach(calculo => {
+      if (!grupos[calculo.fecha]) {
+        grupos[calculo.fecha] = [];
+      }
+      grupos[calculo.fecha].push(calculo);
+    });
+
+    // Ordenar fechas de más reciente a más antigua
+    const fechasOrdenadas = Object.keys(grupos).sort((a, b) =>
+      new Date(b).getTime() - new Date(a).getTime()
+    );
+
+    return fechasOrdenadas.map(fecha => {
+      let calculosGrupo = [...grupos[fecha]];
+
+      // Aplicar ordenamiento
+      calculosGrupo.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
+
+        switch (sortField) {
+          case 'ciclo':
+            aValue = a.ciclo;
+            bValue = b.ciclo;
+            break;
+          case 'tank':
+            aValue = a.tank;
+            bValue = b.tank;
+            break;
+          case 'averageSize':
+            aValue = a.averageSize;
+            bValue = b.averageSize;
+            break;
+          case 'biomass':
+            aValue = a.biomass;
+            bValue = b.biomass;
+            break;
+          case 'population':
+            aValue = a.population;
+            bValue = b.population;
+            break;
+          case 'productivity':
+            aValue = a.productivity;
+            bValue = b.productivity;
+            break;
+          default:
+            aValue = a.tank;
+            bValue = b.tank;
+        }
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          const comparison = aValue.localeCompare(bValue);
+          return sortDirection === 'asc' ? comparison : -comparison;
+        }
+
+        if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      // Calcular métricas del grupo
+      const biomasaTotal = calculosGrupo.reduce((sum, c) => sum + c.biomass, 0);
+      const poblacionTotal = calculosGrupo.reduce((sum, c) => sum + c.population, 0);
+      const cosechaSemanal = calculosGrupo.reduce((sum, c) => sum + c.harvested, 0);
+      const productividadPromedio = calculosGrupo.length > 0
+        ? calculosGrupo.reduce((sum, c) => sum + c.productivity, 0) / calculosGrupo.length
+        : 0;
+
+      return {
+        fecha,
+        calculos: calculosGrupo,
+        metrics: {
+          biomasaTotal,
+          poblacionTotal,
+          cosechaSemanal,
+          productividadPromedio
+        }
+      };
+    });
+  }, [calculosFiltrados, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -342,7 +472,7 @@ export function InventarioCalculosView() {
               <div>
                 <p className="text-sm text-gray-600">Productividad Prom.</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  {calculosFiltrados.length > 0 ? formatNumber(totales.productividad / calculosFiltrados.length) : '0'}
+                  {calculosFiltrados.length > 0 ? (totales.productividad / calculosFiltrados.length).toFixed(5) : '0.00000'}
                 </p>
               </div>
               <TrendingUp className="h-6 w-6 text-purple-600" />
@@ -360,24 +490,7 @@ export function InventarioCalculosView() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Estado
-              </label>
-              <Select value={filtroEstado} onValueChange={setFiltroEstado}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos los estados</SelectItem>
-                  <SelectItem value="activo">Activo</SelectItem>
-                  <SelectItem value="cosecha">En Cosecha</SelectItem>
-                  <SelectItem value="preparacion">Preparación</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Ciclo
@@ -405,7 +518,6 @@ export function InventarioCalculosView() {
                 variant="outline"
                 className="w-full"
                 onClick={() => {
-                  setFiltroEstado("todos");
                   setFiltroCiclo("todos");
                 }}
               >
@@ -417,13 +529,47 @@ export function InventarioCalculosView() {
       </Card>
 
       {/* Tabla de cálculos */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            Cálculos Detallados ({calculosFiltrados.length} registros)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      {/* Tablas agrupadas por fecha */}
+      {calculosAgrupados.map(({ fecha, calculos, metrics }) => (
+        <Card key={fecha} className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg">
+              Cálculos Detallados - {new Date(fecha).toLocaleDateString('es-MX', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })} ({calculos.length} estanques)
+            </CardTitle>
+
+            {/* Métricas del grupo */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-sm font-semibold text-green-700">
+                  {formatWeight(metrics.biomasaTotal)}
+                </div>
+                <div className="text-xs text-green-600">Biomasa Total</div>
+              </div>
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-sm font-semibold text-blue-700">
+                  {formatNumber(metrics.poblacionTotal)}
+                </div>
+                <div className="text-xs text-blue-600">Población Total</div>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="text-sm font-semibold text-orange-700">
+                  {formatWeight(metrics.cosechaSemanal)}
+                </div>
+                <div className="text-xs text-orange-600">Cosecha Semanal</div>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-sm font-semibold text-purple-700">
+                  {metrics.productividadPromedio.toFixed(3)}
+                </div>
+                <div className="text-xs text-purple-600">Productividad Prom.</div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -486,13 +632,12 @@ export function InventarioCalculosView() {
                     </div>
                   </TableHead>
                   <TableHead className="text-center">Culture Weeks</TableHead>
-                  <TableHead className="text-right">Harvested</TableHead>
-                  <TableHead className="text-center">H. Week</TableHead>
-                  <TableHead className="text-center">Estado</TableHead>
+                  <TableHead className="text-right">Weekly Harvest</TableHead>
+                  <TableHead className="text-center">Total Harvest</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {calculosFiltrados.map((calculo) => (
+                {calculos.map((calculo) => (
                   <TableRow key={calculo.id} className="hover:bg-gray-50">
                     <TableCell className="font-medium">
                       <Badge variant="outline" className="bg-blue-50">
@@ -518,10 +663,10 @@ export function InventarioCalculosView() {
                       {formatNumber(calculo.population)}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatNumber(calculo.survivalRates * 100)}%
+                      {formatNumber(calculo.survivalRates)}%
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatNumber(calculo.productivity)}
+                      {calculo.productivity.toFixed(5)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline">
@@ -546,32 +691,33 @@ export function InventarioCalculosView() {
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-center">
-                      <Badge className={getEstadoColor(calculo.estado)}>
-                        {getEstadoTexto(calculo.estado)}
-                      </Badge>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-
-            {calculosFiltrados.length === 0 && (
-              <div className="text-center py-8">
-                <div className="text-gray-500">
-                  <Calculator className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg font-medium">No hay datos para mostrar</p>
-                  {sesiones.length === 0 ? (
-                    <p className="text-sm">Registra muestreos en Inventario Vivo para ver cálculos detallados</p>
-                  ) : (
-                    <p className="text-sm">No se encontraron registros con los filtros aplicados</p>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
+      ))}
+
+      {/* Mostrar mensaje cuando no hay datos */}
+      {calculosAgrupados.length === 0 && (
+        <Card>
+          <CardContent className="py-8">
+            <div className="text-center">
+              <div className="text-gray-500">
+                <Calculator className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">No hay datos para mostrar</p>
+                {sesiones.length === 0 ? (
+                  <p className="text-sm">Registra muestreos en Inventario Vivo para ver cálculos detallados</p>
+                ) : (
+                  <p className="text-sm">No se encontraron registros con los filtros aplicados</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

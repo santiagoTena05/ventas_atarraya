@@ -26,7 +26,6 @@ export function useEstanques() {
     try {
       setIsLoading(true);
       setError(null);
-      console.log('🔄 Cargando estanques desde Supabase...');
 
       const { data, error } = await supabase
         .from('estanques')
@@ -35,7 +34,6 @@ export function useEstanques() {
         .order('id', { ascending: true }); // Ordenar por ID de menor a mayor
 
       if (error) {
-        console.error('❌ Error cargando estanques:', error);
         setError('Error cargando estanques');
         return;
       }
@@ -56,10 +54,8 @@ export function useEstanques() {
         }));
 
         setEstanques(estanquesTransformados);
-        console.log(`✅ Cargados ${estanquesTransformados.length} estanques activos`);
       }
     } catch (error) {
-      console.error('❌ Error cargando estanques:', error);
       setError('Error de conexión');
       setEstanques([]);
     } finally {

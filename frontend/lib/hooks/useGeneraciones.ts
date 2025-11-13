@@ -25,7 +25,6 @@ export function useGeneraciones() {
     try {
       setIsLoading(true);
       setError(null);
-      console.log('🔄 Cargando generaciones desde Supabase...');
 
       const { data, error } = await supabase
         .from('generaciones')
@@ -33,17 +32,14 @@ export function useGeneraciones() {
         .order('codigo', { ascending: false }); // Mostrar las más recientes primero
 
       if (error) {
-        console.error('❌ Error cargando generaciones:', error);
-        setError('Error cargando generaciones');
+          setError('Error cargando generaciones');
         return;
       }
 
       if (data) {
         setGeneraciones(data);
-        console.log(`✅ Cargadas ${data.length} generaciones`);
       }
     } catch (error) {
-      console.error('❌ Error cargando generaciones:', error);
       setError('Error de conexión');
       setGeneraciones([]);
     } finally {
@@ -57,11 +53,9 @@ export function useGeneraciones() {
       // Primero verificar si ya existe
       const generacionExistente = getGeneracionByCodigo(nuevaGeneracion.codigo);
       if (generacionExistente) {
-        console.log('✅ Generación ya existe:', nuevaGeneracion.codigo);
         return generacionExistente;
       }
 
-      console.log('🔄 Creando nueva generación:', nuevaGeneracion.codigo);
 
       const { data, error } = await supabase
         .from('generaciones')
@@ -75,17 +69,14 @@ export function useGeneraciones() {
           await loadGeneraciones(); // Recargar datos
           const generacionRecargada = getGeneracionByCodigo(nuevaGeneracion.codigo);
           if (generacionRecargada) {
-            console.log('✅ Generación encontrada después de recargar:', nuevaGeneracion.codigo);
             return generacionRecargada;
           }
         }
-        console.error('❌ Error creando generación:', error);
         throw new Error('Error creando generación');
       }
 
       if (data) {
         setGeneraciones(prev => [data, ...prev]);
-        console.log('✅ Generación creada exitosamente:', data.codigo);
         return data;
       }
     } catch (error) {

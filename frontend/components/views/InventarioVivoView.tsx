@@ -53,7 +53,16 @@ export function InventarioVivoView() {
   const [cosecha, setCosecha] = useState<number>(0);
   const [indiceMuestreo, setIndiceMuestreo] = useState(0);
   const [modoRegistroCosecha, setModoRegistroCosecha] = useState(false);
+  const [modoAverageSize, setModoAverageSize] = useState(false);
+  const [muestreosSeleccionados, setMuestreosSeleccionados] = useState<number[]>([]);
+  const [conteosCamarones, setConteosCamarones] = useState<{[key: number]: number}>({});
+  const [esperandoConteo, setEsperandoConteo] = useState<number | null>(null);
+  const [averageSizeManual, setAverageSizeManual] = useState<string>("");
+  const [usarAverageSizeManual, setUsarAverageSizeManual] = useState(false);
+  const [opcionSeleccionada, setOpcionSeleccionada] = useState<'automatico' | 'manual'>('automatico');
+  const [metodoElegido, setMetodoElegido] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const conteoInputRef = useRef<HTMLInputElement>(null);
 
   // Transformar datos de Supabase a formato local
   useEffect(() => {
@@ -146,7 +155,10 @@ export function InventarioVivoView() {
         muestreos: datos.valores,
         promedio: mediana, // Mantenemos el nombre 'promedio' por compatibilidad con la interfaz MuestreoEstanque
         biomasa: calcularBiomasa(mediana, estanque?.area || 540),
-        cosecha: datos.cosecha
+        cosecha: datos.cosecha,
+        averageSize: datos.averageSize,
+        muestreosSeleccionadosParaAverage: datos.muestreosSeleccionadosParaAverage,
+        conteosCamarones: datos.conteosCamarones
       };
     });
 
@@ -202,9 +214,34 @@ export function InventarioVivoView() {
 
   const calcularBiomasa = (mediana: number, area: number) => {
     // Convertir de gramos a kg y multiplicar por área
-    const biomasaCalculada = (mediana / 1000) * area;
+    let biomasaCalculada = (mediana / 1000) * area;
+
+    // Aplicar regla: si es mayor a 100kg, sumar 50kg
+    if (biomasaCalculada > 100) {
+      biomasaCalculada += 50;
+    }
+
     // Redondear normalmente (0.5 hacia arriba)
     return Math.round(biomasaCalculada);
+  };
+
+  const calcularAverageSize = (muestreoSeleccionados: number[], conteosCamarones: {[key: number]: number}, valores: number[]) => {
+    if (muestreoSeleccionados.length !== 2) return 0;
+
+    let totalPeso = 0;
+    let totalCamarones = 0;
+
+    muestreoSeleccionados.forEach(indice => {
+      const peso = valores[indice] || 0;
+      const camarones = conteosCamarones[indice] || 0;
+      totalPeso += peso;
+      totalCamarones += camarones;
+    });
+
+    if (totalCamarones === 0) return 0;
+
+    // Average Size = peso total / número total de camarones
+    return Number((totalPeso / totalCamarones).toFixed(1));
   };
 
   const abrirModal = (estanque: EstanqueLocal) => {
@@ -213,6 +250,14 @@ export function InventarioVivoView() {
     setCosecha(0);
     setIndiceMuestreo(0);
     setModoRegistroCosecha(false);
+    setModoAverageSize(false);
+    setMuestreosSeleccionados([]);
+    setConteosCamarones({});
+    setEsperandoConteo(null);
+    setAverageSizeManual("");
+    setUsarAverageSizeManual(false);
+    setMetodoElegido(false);
+    setOpcionSeleccionada('automatico');
     setModalAbierto(true);
   };
 
@@ -252,6 +297,14 @@ export function InventarioVivoView() {
     setCosecha(0);
     setIndiceMuestreo(0);
     setModoRegistroCosecha(false);
+    setModoAverageSize(false);
+    setMuestreosSeleccionados([]);
+    setConteosCamarones({});
+    setEsperandoConteo(null);
+    setAverageSizeManual("");
+    setUsarAverageSizeManual(false);
+    setOpcionSeleccionada('automatico');
+    setMetodoElegido(false);
   };
 
   const completarEstanque = (cosechaValue?: number) => {
@@ -260,6 +313,18 @@ export function InventarioVivoView() {
     // Usar el valor proporcionado o el estado actual de cosecha
     const valorCosecha = cosechaValue !== undefined ? cosechaValue : cosecha;
 
+    // Calcular average size si hay datos
+    const muestreosSeleccionadosParaAverage = Object.keys(conteosCamarones).map(Number);
+    let averageSize = null;
+
+    if (usarAverageSizeManual && averageSizeManual) {
+      // Usar el valor manual ingresado
+      averageSize = parseFloat(averageSizeManual);
+    } else if (Object.keys(conteosCamarones).length === 2) {
+      // Calcular automáticamente desde los conteos
+      averageSize = calcularAverageSize(muestreosSeleccionadosParaAverage, conteosCamarones, valores);
+    }
+
     // Guardar datos del estanque en la sesión
     const nuevosSesionActual = {
       ...sesionActual,
@@ -267,7 +332,10 @@ export function InventarioVivoView() {
         ...sesionActual.muestreos,
         [estanqueActual.id]: {
           valores: [...valores],
-          cosecha: valorCosecha
+          cosecha: valorCosecha,
+          averageSize,
+          muestreosSeleccionadosParaAverage,
+          conteosCamarones: {...conteosCamarones}
         }
       }
     };
@@ -304,7 +372,7 @@ export function InventarioVivoView() {
       setValores(nuevosValores);
 
       if (nuevosValores.length === 9) {
-        setModoRegistroCosecha(true);
+        setModoAverageSize(true);
         setIndiceMuestreo(0);
       } else {
         setIndiceMuestreo(indiceMuestreo + 1);
@@ -313,6 +381,8 @@ export function InventarioVivoView() {
       (e.target as HTMLInputElement).value = '';
     }
   };
+
+
 
   const manejarCosechaEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -324,11 +394,114 @@ export function InventarioVivoView() {
     }
   };
 
+  const seleccionarMuestreo = (indice: number) => {
+    // Solo permitir selección si no hay un conteo pendiente y no hemos completado 2
+    if (esperandoConteo === null && Object.keys(conteosCamarones).length < 2) {
+      // No permitir seleccionar un muestreo que ya tiene conteo
+      if (!conteosCamarones[indice]) {
+        setEsperandoConteo(indice);
+        setTimeout(() => {
+          conteoInputRef.current?.focus();
+        }, 100);
+      }
+    }
+  };
+
+  const manejarConteoEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const conteo = parseInt((e.target as HTMLInputElement).value);
+
+      if (conteo > 0 && esperandoConteo !== null) {
+        // Guardar el conteo
+        setConteosCamarones(prev => ({
+          ...prev,
+          [esperandoConteo]: conteo
+        }));
+
+        // Limpiar el input y el estado de espera
+        (e.target as HTMLInputElement).value = '';
+        setEsperandoConteo(null);
+      }
+    }
+  };
+
+  const manejarTeclasNumericas = (e: KeyboardEvent) => {
+    // Solo responder a teclas numéricas del 1 al 9 para selección si:
+    // 1. No hay un conteo pendiente (esperandoConteo === null)
+    // 2. El elemento activo no es un input (para evitar interferir con escritura)
+    const elementoActivo = document.activeElement;
+    const esInput = elementoActivo?.tagName === 'INPUT';
+
+    if (esperandoConteo === null && !esInput && e.key >= '1' && e.key <= '9') {
+      e.preventDefault();
+      const indice = parseInt(e.key) - 1; // Convertir a índice (0-8)
+      if (indice < valores.length) {
+        seleccionarMuestreo(indice);
+      }
+    }
+  };
+
+  const manejarEnterParaContinuar = (e: KeyboardEvent) => {
+    // Permitir Enter para continuar cuando los 2 conteos están completos y validación de manual
+    const puedeAvanzar = modoAverageSize &&
+                         esperandoConteo === null &&
+                         Object.keys(conteosCamarones).length === 2 &&
+                         (!usarAverageSizeManual || (averageSizeManual && parseFloat(averageSizeManual) > 0));
+
+    if (e.key === 'Enter' && puedeAvanzar) {
+      e.preventDefault();
+      setModoAverageSize(false);
+      setModoRegistroCosecha(true);
+    }
+  };
+
   useEffect(() => {
     if (modalAbierto && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [modalAbierto, indiceMuestreo, modoRegistroCosecha]);
+  }, [modalAbierto, indiceMuestreo, modoRegistroCosecha, modoAverageSize]);
+
+  // Listener para teclas numéricas en modo Average Size
+  useEffect(() => {
+    if (modoAverageSize && modalAbierto) {
+      document.addEventListener('keydown', manejarTeclasNumericas);
+      document.addEventListener('keydown', manejarEnterParaContinuar);
+      return () => {
+        document.removeEventListener('keydown', manejarTeclasNumericas);
+        document.removeEventListener('keydown', manejarEnterParaContinuar);
+      };
+    }
+  }, [modoAverageSize, modalAbierto, esperandoConteo, conteosCamarones, usarAverageSizeManual, averageSizeManual]);
+
+  // Navegación con teclado para selección de método
+  const manejarNavegacionMetodo = (e: KeyboardEvent) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      setOpcionSeleccionada('manual');
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setOpcionSeleccionada('automatico');
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (opcionSeleccionada === 'manual') {
+        setUsarAverageSizeManual(true);
+        setMetodoElegido(true);
+      } else {
+        setUsarAverageSizeManual(false);
+        setMetodoElegido(true);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (modoAverageSize && modalAbierto && !metodoElegido) {
+      document.addEventListener('keydown', manejarNavegacionMetodo);
+      return () => {
+        document.removeEventListener('keydown', manejarNavegacionMetodo);
+      };
+    }
+  }, [modoAverageSize, modalAbierto, metodoElegido, opcionSeleccionada]);
 
   // Mostrar loading mientras cargan los estanques
   if (loadingEstanques) {
@@ -654,7 +827,7 @@ export function InventarioVivoView() {
           </DialogHeader>
 
           <div className="space-y-6">
-            {!modoRegistroCosecha ? (
+            {!modoRegistroCosecha && !modoAverageSize ? (
               // Modo muestreos
               <>
                 <div className="text-center">
@@ -725,6 +898,288 @@ export function InventarioVivoView() {
                   )}
                 </div>
               </>
+            ) : modoAverageSize ? (
+              // Modo selección de método para average size
+              <>
+                {!metodoElegido ? (
+                  // Primera vista: elegir método
+                  <div className="space-y-6">
+                    <div className="text-center mb-6">
+                      <div className="text-lg font-bold text-teal-600 mb-2">
+                        ¿Cómo quieres determinar el average size?
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Elige el método que prefieras usar
+                      </p>
+                    </div>
+
+                    {/* Opción 1: Calcular automáticamente */}
+                    <div
+                      className={`border-2 rounded-lg p-4 transition-colors cursor-pointer ${
+                        opcionSeleccionada === 'automatico'
+                          ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200'
+                          : 'border-blue-200 hover:border-blue-300'
+                      }`}
+                      onClick={() => {
+                        setUsarAverageSizeManual(false);
+                        setMetodoElegido(true);
+                      }}
+                      onMouseEnter={() => setOpcionSeleccionada('automatico')}
+                    >
+                      <div className="w-full text-left">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <div className="bg-blue-100 p-2 rounded-full">
+                            <span className="text-blue-600 font-bold">🔢</span>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-blue-700">Calcular automáticamente</div>
+                            <div className="text-sm text-gray-600">Seleccionar 2 muestreos y contar camarones</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Opción 2: Ingresar manualmente */}
+                    <div
+                      className={`border-2 rounded-lg p-4 transition-colors cursor-pointer ${
+                        opcionSeleccionada === 'manual'
+                          ? 'border-purple-400 bg-purple-50 ring-2 ring-purple-200'
+                          : 'border-purple-200 hover:border-purple-300'
+                      }`}
+                      onClick={() => {
+                        setUsarAverageSizeManual(true);
+                        setMetodoElegido(true);
+                      }}
+                      onMouseEnter={() => setOpcionSeleccionada('manual')}
+                    >
+                      <div className="w-full text-left">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <div className="bg-purple-100 p-2 rounded-full">
+                            <span className="text-purple-600 font-bold">✏️</span>
+                          </div>
+                          <div>
+                            <div className="font-semibold text-purple-700">Ingresar manualmente</div>
+                            <div className="text-sm text-gray-600">Ya tengo el average size calculado</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Instrucciones de teclado */}
+                    <div className="text-center text-sm text-gray-500 mt-4">
+                      <p>Usa las flechas ↑↓ para navegar y <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Enter</kbd> para seleccionar</p>
+                    </div>
+                  </div>
+                ) : usarAverageSizeManual ? (
+                  // Vista manual
+                  <div className="space-y-6">
+                    <div className="text-center mb-4">
+                      <div className="text-lg font-bold text-purple-600 mb-2">
+                        Ingresar Average Size
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Introduce el valor que calculaste previamente
+                      </p>
+                    </div>
+
+                    <div className="bg-purple-50 p-6 rounded-lg">
+                      <label className="block text-sm font-medium text-purple-700 mb-2 text-center">
+                        Average Size (gramos):
+                      </label>
+                      <Input
+                        type="number"
+                        placeholder="Ej: 12.5"
+                        value={averageSizeManual}
+                        onChange={(e) => setAverageSizeManual(e.target.value)}
+                        className="text-center text-2xl font-bold py-3"
+                        step="0.1"
+                        min="0"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setUsarAverageSizeManual(false);
+                          setAverageSizeManual("");
+                          setMetodoElegido(false);
+                        }}
+                        className="flex-1"
+                      >
+                        Atrás
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          // Actualizar los datos de sesión con el average size manual
+                          if (estanqueActual && sesionActual) {
+                            const nuevosSesionActual = {
+                              ...sesionActual,
+                              muestreos: {
+                                ...sesionActual.muestreos,
+                                [estanqueActual.id]: {
+                                  ...(sesionActual.muestreos[estanqueActual.id] || {}),
+                                  valores: [...valores],
+                                  averageSize: parseFloat(averageSizeManual),
+                                  muestreosSeleccionadosParaAverage: [],
+                                  conteosCamarones: {}
+                                }
+                              }
+                            };
+                            setSesionActual(nuevosSesionActual);
+                          }
+                          setModoAverageSize(false);
+                          setModoRegistroCosecha(true);
+                        }}
+                        disabled={!averageSizeManual || parseFloat(averageSizeManual) <= 0}
+                        className="flex-1 bg-purple-600 hover:bg-purple-700 text-white disabled:bg-gray-400"
+                      >
+                        Continuar
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  // Vista automática (original)
+                  <div className="space-y-4">
+                    <div className="text-center mb-4">
+                      <div className="text-lg font-bold text-teal-600 mb-2">
+                        Selecciona 2 muestreos para average size
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Haz clic en los muestreos o presiona los números del 1 al 9
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setUsarAverageSizeManual(false);
+                          setConteosCamarones({});
+                          setEsperandoConteo(null);
+                          setMetodoElegido(false);
+                        }}
+                        className="mt-2 text-xs"
+                      >
+                        ← Cambiar método
+                      </Button>
+                    </div>
+
+                {/* Muestreos registrados con índices */}
+                <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                  <div className="text-sm text-blue-700 font-medium mb-3">Muestreos registrados:</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {valores.map((valor, idx) => {
+                      const tieneConteo = conteosCamarones[idx] !== undefined;
+                      const estaSeleccionado = esperandoConteo === idx;
+                      const puedeSeleccionar = !tieneConteo && esperandoConteo === null && Object.keys(conteosCamarones).length < 2;
+
+                      return (
+                        <button
+                          key={idx}
+                          onClick={() => seleccionarMuestreo(idx)}
+                          disabled={!puedeSeleccionar}
+                          className={`relative p-3 rounded-lg border-2 transition-all ${
+                            estaSeleccionado
+                              ? 'border-yellow-500 bg-yellow-100 text-yellow-800'
+                              : tieneConteo
+                              ? 'border-teal-500 bg-teal-100 text-teal-800'
+                              : puedeSeleccionar
+                              ? 'border-blue-200 bg-blue-100 text-blue-800 hover:border-blue-300'
+                              : 'border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {/* Índice del muestreo */}
+                          <div className="absolute -top-1 -left-1 bg-gray-700 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                            {idx + 1}
+                          </div>
+
+                          {/* Valor del muestreo */}
+                          <div className="text-lg font-bold">{valor}g</div>
+
+                          {/* Estado */}
+                          {tieneConteo && (
+                            <div className="absolute -top-1 -right-1 bg-teal-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                              ✓
+                            </div>
+                          )}
+                          {estaSeleccionado && (
+                            <div className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                              ⏳
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Progreso de conteo */}
+                  <div className="mt-3 text-center text-sm text-gray-600">
+                    Conteos completados: {Object.keys(conteosCamarones).length}/2
+                  </div>
+                </div>
+
+                {/* Input para conteo de camarones */}
+                {esperandoConteo !== null && (
+                  <div className="bg-yellow-50 p-4 rounded-lg mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Conteo de camarones para muestreo #{esperandoConteo + 1} ({valores[esperandoConteo]}g):
+                    </label>
+                    <Input
+                      ref={conteoInputRef}
+                      type="number"
+                      placeholder="Número de camarones"
+                      className="text-center text-lg font-semibold"
+                      onKeyDown={manejarConteoEnter}
+                      min="1"
+                      step="1"
+                    />
+                    <p className="text-xs text-gray-500 mt-1 text-center">
+                      Presiona Enter para confirmar
+                    </p>
+                  </div>
+                )}
+
+                {/* Resumen de conteos */}
+                {Object.keys(conteosCamarones).length > 0 && (
+                  <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                    <div className="text-sm text-gray-700 font-medium mb-2">Conteos registrados:</div>
+                    <div className="space-y-1">
+                      {Object.entries(conteosCamarones).map(([indice, conteo]) => (
+                        <div key={indice} className="flex justify-between text-sm">
+                          <span>Muestreo #{parseInt(indice) + 1} ({valores[parseInt(indice)]}g):</span>
+                          <span className="font-medium">{conteo} camarones</span>
+                        </div>
+                      ))}
+                    </div>
+                    {Object.keys(conteosCamarones).length === 2 && (
+                      <div className="mt-3 pt-3 border-t text-center">
+                        <div className="text-sm text-teal-700 font-medium">
+                          Average Size: {calcularAverageSize(Object.keys(conteosCamarones).map(Number), conteosCamarones, valores).toFixed(1)}g
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Botón para continuar */}
+                {Object.keys(conteosCamarones).length === 2 && (
+                  <div className="flex flex-col items-center space-y-2">
+                    <Button
+                      onClick={() => {
+                        setModoAverageSize(false);
+                        setModoRegistroCosecha(true);
+                      }}
+                      className="bg-teal-600 hover:bg-teal-700 text-white"
+                    >
+                      Continuar a registro de cosecha
+                    </Button>
+                    <p className="text-xs text-gray-500">
+                      Presiona Enter para continuar
+                    </p>
+                  </div>
+                )}
+                  </div>
+                )}
+              </>
             ) : (
               // Modo cosecha
               <>
@@ -741,6 +1196,14 @@ export function InventarioVivoView() {
                       <span className="text-gray-600">Biomasa total:</span>
                       <span className="font-bold text-green-700">{biomasa.toFixed(1)} kg</span>
                     </div>
+                    {Object.keys(conteosCamarones).length === 2 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Average size:</span>
+                        <span className="font-bold text-green-700">
+                          {calcularAverageSize(Object.keys(conteosCamarones).map(Number), conteosCamarones, valores).toFixed(1)}g
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 

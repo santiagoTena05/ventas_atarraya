@@ -4,7 +4,6 @@ import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useMuestreos } from '@/lib/hooks/useMuestreos';
-import { useCosechas } from '@/lib/hooks/useCosechas';
 
 interface BiomassHarvestedChartProps {
   dateRange?: { startDate: Date; endDate: Date } | null;
@@ -27,10 +26,9 @@ const getWeekNumber = (date: Date): number => {
 
 export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps) {
   const { sesiones: muestreosSesiones, loading: loadingMuestreos } = useMuestreos();
-  const { cosechas, isLoading: loadingCosechas } = useCosechas();
 
   const chartData = useMemo(() => {
-    if (loadingMuestreos || loadingCosechas) return [];
+    if (loadingMuestreos) return [];
 
     // Filter data by date range if provided
     const filteredMuestreos = dateRange
@@ -39,13 +37,6 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
           return sesionDate >= dateRange.startDate && sesionDate <= dateRange.endDate;
         })
       : muestreosSesiones;
-
-    const filteredCosechas = dateRange
-      ? cosechas.filter(cosecha => {
-          const cosechaDate = new Date(cosecha.fechaCosecha);
-          return cosechaDate >= dateRange.startDate && cosechaDate <= dateRange.endDate;
-        })
-      : cosechas;
 
     // Group muestreos by week
     const biomassData = new Map<number, number>();
@@ -60,13 +51,19 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
       }
     });
 
-    // Group harvests by week
+    // Group harvests by week from muestreos data
     const harvestedData = new Map<number, number>();
-    filteredCosechas.forEach(cosecha => {
-      const cosechaDate = new Date(cosecha.fechaCosecha);
-      const weekNumber = getWeekNumber(cosechaDate);
-      const existingHarvested = harvestedData.get(weekNumber) || 0;
-      harvestedData.set(weekNumber, existingHarvested + cosecha.pesoTotalKg);
+    filteredMuestreos.forEach(sesion => {
+      if (sesion.semana) {
+        const totalHarvest = Object.values(sesion.muestreos).reduce(
+          (sum, muestreo) => sum + (muestreo.cosecha || 0),
+          0
+        );
+        if (totalHarvest > 0) {
+          const existingHarvested = harvestedData.get(sesion.semana) || 0;
+          harvestedData.set(sesion.semana, existingHarvested + totalHarvest);
+        }
+      }
     });
 
     // Get all weeks and sort them
@@ -94,7 +91,7 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
     });
 
     return data;
-  }, [muestreosSesiones, cosechas, dateRange, loadingMuestreos, loadingCosechas]);
+  }, [muestreosSesiones, dateRange, loadingMuestreos]);
 
   const formatNumber = (value: number) => {
     return value.toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -118,7 +115,7 @@ export function BiomassHarvestedChart({ dateRange }: BiomassHarvestedChartProps)
   };
 
 
-  if (loadingMuestreos || loadingCosechas) {
+  if (loadingMuestreos) {
     return (
       <Card>
         <CardHeader>
