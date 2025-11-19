@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import { useEstanques } from "@/lib/hooks/useEstanques";
 import { useMuestreos } from "@/lib/hooks/useMuestreos";
 import { usePoblacionesIniciales } from "@/lib/hooks/usePoblacionesIniciales";
+import { useEditLogs } from "@/lib/hooks/useEditLogs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,9 +23,15 @@ import {
   TrendingUp,
   Filter,
   Download,
-  ArrowUpDown
+  ArrowUpDown,
+  Edit3,
+  Save,
+  X
 } from "lucide-react";
 import { formatNumber, formatWeight, formatCurrency } from "@/lib/utils/formatters";
+import { supabase } from "@/lib/supabase";
+import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 
 interface CalculoCompleto {
@@ -55,10 +62,14 @@ export function InventarioCalculosView() {
   const { estanques: estanquesSupabase, isLoading: loadingEstanques, error } = useEstanques();
   const { sesiones, loading: loadingMuestreos, obtenerGeneraciones } = useMuestreos();
   const { obtenerPoblacionInicial, loading: loadingPoblaciones } = usePoblacionesIniciales();
+  const { isFieldEdited, getFieldLastEdit, loadLogs } = useEditLogs('muestreos_detalle');
   const [calculos, setCalculos] = useState<CalculoCompleto[]>([]);
   const [filtroCiclo, setFiltroCiclo] = useState<string>("todos");
   const [sortField, setSortField] = useState<SortField>('ciclo');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [editMode, setEditMode] = useState<{[tableKey: string]: boolean}>({});
+  const [editingCell, setEditingCell] = useState<{tableKey: string, rowId: string, field: string} | null>(null);
+  const [editValues, setEditValues] = useState<{[key: string]: any}>({});
 
   // Generar datos cuando se cargan los estanques, muestreos y poblaciones iniciales
   React.useEffect(() => {
@@ -155,7 +166,7 @@ export function InventarioCalculosView() {
 
             // Integrar datos de cosecha reales
             const weeklyHarvest = muestreo.cosecha || 0; // Cosecha de la semana actual
-            const totalHarvested = 0; // TODO: Cuando se implemente, calcular total acumulado de la generación
+            const totalHarvested = muestreo.cosechaTotal || 0; // Total acumulado de la generación
 
             // Intercambiar: harvested = cosecha semanal, hWeek = total acumulado
             const harvested = weeklyHarvest;
@@ -165,7 +176,7 @@ export function InventarioCalculosView() {
             const estado = 'activo'; // No se usa más pero mantenemos para compatibilidad
 
             calculosReales.push({
-              id: `${ciclo}-${estanque.id}-${sesion.fecha}`,
+              id: muestreo.id || `${ciclo}-${estanque.id}-${sesion.fecha}`,
               ciclo,
               tank: estanque.codigo || `EST-${estanque.id.toString().padStart(2, '0')}`,
               averageSize,
@@ -193,6 +204,329 @@ export function InventarioCalculosView() {
       setCalculos([]);
     }
   }, [estanquesSupabase, sesiones, loadingPoblaciones]);
+
+  // Función para guardar cambios en Supabase
+  // Función helper para registrar logs de edición
+  const registrarLogEdicion = async (
+    tabla: string,
+    registroId: string,
+    campo: string,
+    valorAnterior: any,
+    valorNuevo: any
+  ) => {
+    try {
+      await supabase
+        .from('logs_edicion')
+        .insert({
+          tabla_nombre: tabla,
+          registro_id: registroId,
+          campo_nombre: campo,
+          valor_anterior: valorAnterior?.toString() || null,
+          valor_nuevo: valorNuevo?.toString() || null,
+          usuario_id: null // Para cuando implementes usuarios
+        });
+    } catch (error) {
+      console.warn('Error registrando log de edición:', error);
+      // No fallar la edición si el log falla
+    }
+  };
+
+  const saveFieldToSupabase = async (calculoId: string, field: string, value: any) => {
+    try {
+      const calculo = calculos.find(c => c.id === calculoId);
+      if (!calculo) return false;
+
+      // Verificar que el ID sea un UUID válido (formato de base de datos)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(calculoId)) {
+        console.error('ID no es un UUID válido:', calculoId);
+        alert('Error: No se puede editar este registro (no tiene ID válido en la base de datos)');
+        return false;
+      }
+
+      // Mapear campos de la vista a campos de la base de datos
+      let dbField: string;
+      let dbValue: any = value;
+      let valorAnterior: any;
+
+      switch (field) {
+        case 'averageSize':
+          dbField = 'average_size';
+          dbValue = parseFloat(value);
+          valorAnterior = (calculo as any)[field];
+          break;
+        case 'biomass':
+          dbField = 'biomasa';
+          dbValue = parseFloat(value);
+          valorAnterior = (calculo as any)[field];
+          break;
+        case 'harvested':
+          dbField = 'cosecha';
+          dbValue = parseFloat(value);
+          valorAnterior = (calculo as any)[field];
+          break;
+        case 'hWeek':
+          dbField = 'cosecha_total';
+          dbValue = parseFloat(value);
+          valorAnterior = (calculo as any)[field];
+          break;
+        default:
+          return false;
+      }
+
+      // Solo guardar si el valor realmente cambió
+      if (valorAnterior === dbValue) {
+        return true; // No hay cambio, pero es éxito
+      }
+
+      const { error } = await supabase
+        .from('muestreos_detalle')
+        .update({ [dbField]: dbValue })
+        .eq('id', calculoId);
+
+      if (error) {
+        console.error('Error updating field:', error);
+        alert('Error guardando cambios');
+        return false;
+      }
+
+      // ✨ Registrar el log de edición
+      await registrarLogEdicion(
+        'muestreos_detalle',
+        calculoId,
+        dbField,
+        valorAnterior,
+        dbValue
+      );
+
+      // Refrescar los logs para mostrar el indicador
+      await loadLogs();
+
+      // Actualizar estado local
+      setCalculos(prev => prev.map(c =>
+        c.id === calculoId ? { ...c, [field]: dbValue } : c
+      ));
+
+      return true;
+    } catch (error) {
+      console.error('Error saving to Supabase:', error);
+      alert('Error de conexión');
+      return false;
+    }
+  };
+
+  // Manejar edición de celda
+  const handleCellEdit = (tableKey: string, rowId: string, field: string, currentValue: any) => {
+    setEditingCell({ tableKey, rowId, field });
+    setEditValues({ [`${rowId}-${field}`]: currentValue });
+  };
+
+  // Guardar cambios de celda
+  const handleCellSave = async (rowId: string, field: string) => {
+    const key = `${rowId}-${field}`;
+    const newValue = editValues[key];
+
+    if (newValue !== undefined) {
+      const success = await saveFieldToSupabase(rowId, field, newValue);
+      if (success) {
+        setEditingCell(null);
+        setEditValues(prev => {
+          const { [key]: _, ...rest } = prev;
+          return rest;
+        });
+      }
+    }
+  };
+
+  // Cancelar edición
+  const handleCancelEdit = () => {
+    setEditingCell(null);
+    setEditValues({});
+  };
+
+  // Toggle edit mode para una tabla específica
+  const toggleEditMode = (tableKey: string) => {
+    setEditMode(prev => ({
+      ...prev,
+      [tableKey]: !prev[tableKey]
+    }));
+    setEditingCell(null);
+    setEditValues({});
+  };
+
+  // Componente para celdas editables
+  const EditableCell = ({
+    tableKey,
+    rowId,
+    field,
+    value,
+    isEditable = false,
+    formatter = (v) => v
+  }: {
+    tableKey: string;
+    rowId: string;
+    field: string;
+    value: any;
+    isEditable?: boolean;
+    formatter?: (value: any) => string;
+  }) => {
+    const isEditingThis = editingCell?.tableKey === tableKey &&
+                         editingCell?.rowId === rowId &&
+                         editingCell?.field === field;
+    const key = `${rowId}-${field}`;
+
+    // Verificar si el ID es válido para edición
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const canEdit = isEditable && uuidRegex.test(rowId);
+
+    // Mapear campo UI a campo DB para el log
+    const getDbField = (field: string) => {
+      switch (field) {
+        case 'averageSize': return 'average_size';
+        case 'biomass': return 'biomasa';
+        case 'harvested': return 'cosecha';
+        case 'hWeek': return 'cosecha_total';
+        default: return field;
+      }
+    };
+
+    // Verificar si el campo fue editado
+    const dbField = getDbField(field);
+    const wasEdited = isFieldEdited(rowId, dbField);
+    const editLog = getFieldLastEdit(rowId, dbField);
+
+    // Función para formatear la fecha
+    const formatDate = (dateStr: string) => {
+      return new Date(dateStr).toLocaleDateString('es-MX', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+
+    if (isEditingThis) {
+      return (
+        <div className="flex items-center gap-1">
+          <Input
+            type="number"
+            value={editValues[key] || ''}
+            onChange={(e) => setEditValues(prev => ({ ...prev, [key]: e.target.value }))}
+            className="h-8 w-24"
+            step="0.01"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleCellSave(rowId, field);
+              } else if (e.key === 'Escape') {
+                handleCancelEdit();
+              }
+            }}
+            autoFocus
+          />
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 w-6 p-0"
+              onClick={() => handleCellSave(rowId, field)}
+            >
+              <Save className="h-3 w-3" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 w-6 p-0"
+              onClick={handleCancelEdit}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // Contenido base con indicador de edición
+    const baseContent = (
+      <div className="flex items-center gap-1">
+        {formatter(value)}
+        {wasEdited && (
+          <div className="w-2 h-2 bg-orange-400 rounded-full flex-shrink-0" title="Campo editado" />
+        )}
+      </div>
+    );
+
+    // Si puede editarse y está en modo edición
+    if (canEdit && editMode[tableKey]) {
+      const editableContent = (
+        <div
+          className="cursor-pointer hover:bg-blue-50 p-1 rounded border-2 border-transparent hover:border-blue-200 transition-colors"
+          onClick={() => handleCellEdit(tableKey, rowId, field, value)}
+          title="Click para editar"
+        >
+          {baseContent}
+        </div>
+      );
+
+      // Si fue editado, mostrar tooltip
+      if (wasEdited && editLog) {
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {editableContent}
+              </TooltipTrigger>
+              <TooltipContent className="p-3 max-w-xs">
+                <div className="text-xs space-y-1">
+                  <div className="font-semibold text-orange-600">Campo editado</div>
+                  <div><span className="font-medium">Anterior:</span> {editLog.valor_anterior || 'N/A'}</div>
+                  <div><span className="font-medium">Actual:</span> {editLog.valor_nuevo || 'N/A'}</div>
+                  <div><span className="font-medium">Fecha:</span> {formatDate(editLog.fecha_edicion)}</div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      }
+
+      return editableContent;
+    }
+
+    // Si está en modo edición pero no es editable
+    if (editMode[tableKey] && isEditable && !canEdit) {
+      return (
+        <span
+          className="text-gray-400 italic"
+          title="No editable: registro sin ID válido en la base de datos"
+        >
+          {baseContent}
+        </span>
+      );
+    }
+
+    // Si fue editado pero no está en modo edición, solo mostrar tooltip
+    if (wasEdited && editLog) {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>{baseContent}</span>
+            </TooltipTrigger>
+            <TooltipContent className="p-3 max-w-xs">
+              <div className="text-xs space-y-1">
+                <div className="font-semibold text-orange-600">Campo editado</div>
+                <div><span className="font-medium">Anterior:</span> {editLog.valor_anterior || 'N/A'}</div>
+                <div><span className="font-medium">Actual:</span> {editLog.valor_nuevo || 'N/A'}</div>
+                <div><span className="font-medium">Fecha:</span> {formatDate(editLog.fecha_edicion)}</div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return <span>{baseContent}</span>;
+  };
 
   const ciclosUnicos = useMemo(() => {
     const ciclos = Array.from(new Set(calculos.map(c => c.ciclo)));
@@ -248,6 +582,7 @@ export function InventarioCalculosView() {
 
     return filtered;
   }, [calculos, filtroCiclo, sortField, sortDirection]);
+
 
   // Agrupar cálculos por fecha
   const calculosAgrupados = useMemo(() => {
@@ -392,16 +727,6 @@ export function InventarioCalculosView() {
     );
   }
 
-  const totales = calculosFiltrados.reduce(
-    (acc, calc) => ({
-      biomasa: acc.biomasa + calc.biomass,
-      population: acc.population + calc.population,
-      cosechado: acc.cosechado + calc.harvested,
-      productividad: acc.productividad + calc.productivity
-    }),
-    { biomasa: 0, population: 0, cosechado: 0, productividad: 0 }
-  );
-
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -428,58 +753,6 @@ export function InventarioCalculosView() {
         </div>
       </div>
 
-      {/* Estadísticas resumidas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Biomasa Total</p>
-                <p className="text-2xl font-bold text-green-600">{formatWeight(totales.biomasa)} kg</p>
-              </div>
-              <TrendingUp className="h-6 w-6 text-green-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Población Total</p>
-                <p className="text-2xl font-bold text-blue-600">{formatNumber(totales.population)}</p>
-              </div>
-              <Droplets className="h-6 w-6 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Cosechado</p>
-                <p className="text-2xl font-bold text-yellow-600">{formatWeight(totales.cosechado)} kg</p>
-              </div>
-              <Calculator className="h-6 w-6 text-yellow-600" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Productividad Prom.</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {calculosFiltrados.length > 0 ? (totales.productividad / calculosFiltrados.length).toFixed(5) : '0.00000'}
-                </p>
-              </div>
-              <TrendingUp className="h-6 w-6 text-purple-600" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Filtros */}
       <Card>
@@ -533,13 +806,24 @@ export function InventarioCalculosView() {
       {calculosAgrupados.map(({ fecha, calculos, metrics }) => (
         <Card key={fecha} className="mb-6">
           <CardHeader>
-            <CardTitle className="text-lg">
-              Cálculos Detallados - {new Date(fecha).toLocaleDateString('es-MX', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })} ({calculos.length} estanques)
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">
+                Cálculos Detallados - {new Date(fecha).toLocaleDateString('es-MX', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })} ({calculos.length} estanques)
+              </CardTitle>
+              <Button
+                variant={editMode[fecha] ? "default" : "outline"}
+                size="sm"
+                onClick={() => toggleEditMode(fecha)}
+                className="flex items-center gap-2"
+              >
+                <Edit3 className="h-4 w-4" />
+                {editMode[fecha] ? 'Finalizar Edición' : 'Editar'}
+              </Button>
+            </div>
 
             {/* Métricas del grupo */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
@@ -648,13 +932,27 @@ export function InventarioCalculosView() {
                       {calculo.tank}
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatNumber(calculo.averageSize)}
+                      <EditableCell
+                        tableKey={fecha}
+                        rowId={calculo.id}
+                        field="averageSize"
+                        value={calculo.averageSize}
+                        isEditable={true}
+                        formatter={formatNumber}
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       {formatNumber(calculo.growth)}
                     </TableCell>
                     <TableCell className="text-right font-medium">
-                      {formatWeight(calculo.biomass)}
+                      <EditableCell
+                        tableKey={fecha}
+                        rowId={calculo.id}
+                        field="biomass"
+                        value={calculo.biomass}
+                        isEditable={true}
+                        formatter={formatWeight}
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       {formatWeight(calculo.biomassIncrease)}
@@ -674,22 +972,24 @@ export function InventarioCalculosView() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      {calculo.harvested > 0 ? (
-                        <span className="font-medium text-green-600">
-                          {formatNumber(calculo.harvested)}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">0</span>
-                      )}
+                      <EditableCell
+                        tableKey={fecha}
+                        rowId={calculo.id}
+                        field="harvested"
+                        value={calculo.harvested}
+                        isEditable={true}
+                        formatter={(value) => value > 0 ? formatNumber(value) : "0"}
+                      />
                     </TableCell>
                     <TableCell className="text-center">
-                      {calculo.hWeek > 0 ? (
-                        <Badge variant="outline" className="bg-yellow-50">
-                          {calculo.hWeek}
-                        </Badge>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
+                      <EditableCell
+                        tableKey={fecha}
+                        rowId={calculo.id}
+                        field="hWeek"
+                        value={calculo.hWeek}
+                        isEditable={true}
+                        formatter={(value) => value > 0 ? value.toString() : "-"}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

@@ -120,15 +120,20 @@ export function usePrecios() {
       let precioUnitario = 0;
       let tipoPrecio: 'mayorista' | 'restaurante' | 'menudeo' = 'menudeo';
 
+      console.log('🔍 Evaluando tipo cliente (función principal):', tipoCliente, 'cantidad:', cantidadKg, 'min mayorista:', precioCorrespondiente.cantidad_min_mayorista);
+
       if (tipoCliente === 'Mayorista' && cantidadKg >= precioCorrespondiente.cantidad_min_mayorista) {
         precioUnitario = precioCorrespondiente.precio_mayorista;
         tipoPrecio = 'mayorista';
-      } else if (tipoCliente === 'Restaurante') {
+        console.log('✅ Aplicando precio mayorista (principal):', precioUnitario);
+      } else if (tipoCliente === 'Restaurante' || tipoCliente === 'Restaurantes') {
         precioUnitario = precioCorrespondiente.precio_restaurante;
         tipoPrecio = 'restaurante';
+        console.log('✅ Aplicando precio restaurante (principal):', precioUnitario);
       } else {
         precioUnitario = precioCorrespondiente.precio_menudeo;
         tipoPrecio = 'menudeo';
+        console.log('✅ Aplicando precio menudeo (principal):', precioUnitario);
       }
 
       // 5. Calcular montos
@@ -235,24 +240,23 @@ export function usePrecios() {
 
       // 2. Determinar tipo de precio según el tipo de cliente y cantidad
       let precioUnitario = 0;
-      let tipoPrecio = '';
+      let tipoPrecio: 'mayorista' | 'restaurante' | 'menudeo' = 'menudeo';
 
-      const tipoClienteNum = parseInt(tipoCliente);
+      console.log('🔍 Evaluando tipo cliente:', tipoCliente, 'cantidad:', cantidadKg, 'min mayorista:', precioData.cantidad_min_mayorista);
 
-      // Mayorista (5) - requiere cantidad mínima
-      if (tipoClienteNum === 5 && cantidadKg >= precioData.cantidad_min_mayorista) {
+      // Comparar con el nombre del tipo de cliente (string)
+      if (tipoCliente === 'Mayorista' && cantidadKg >= precioData.cantidad_min_mayorista) {
         precioUnitario = precioData.precio_mayorista;
         tipoPrecio = 'mayorista';
-      }
-      // Restaurante (9)
-      else if (tipoClienteNum === 9) {
+        console.log('✅ Aplicando precio mayorista:', precioUnitario);
+      } else if (tipoCliente === 'Restaurante' || tipoCliente === 'Restaurantes') {
         precioUnitario = precioData.precio_restaurante;
         tipoPrecio = 'restaurante';
-      }
-      // Otros tipos - precio menudeo
-      else {
+        console.log('✅ Aplicando precio restaurante:', precioUnitario);
+      } else {
         precioUnitario = precioData.precio_menudeo;
         tipoPrecio = 'menudeo';
+        console.log('✅ Aplicando precio menudeo:', precioUnitario);
       }
 
       console.log(`💵 Precio unitario aplicado: $${precioUnitario} (${tipoPrecio})`);

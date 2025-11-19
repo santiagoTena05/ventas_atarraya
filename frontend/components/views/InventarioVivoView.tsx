@@ -50,7 +50,6 @@ export function InventarioVivoView() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [estanqueActual, setEstanqueActual] = useState<EstanqueLocal | null>(null);
   const [valores, setValores] = useState<number[]>([]);
-  const [cosecha, setCosecha] = useState<number>(0);
   const [indiceMuestreo, setIndiceMuestreo] = useState(0);
   const [modoRegistroCosecha, setModoRegistroCosecha] = useState(false);
   const [modoAverageSize, setModoAverageSize] = useState(false);
@@ -247,7 +246,6 @@ export function InventarioVivoView() {
   const abrirModal = (estanque: EstanqueLocal) => {
     setEstanqueActual(estanque);
     setValores([]);
-    setCosecha(0);
     setIndiceMuestreo(0);
     setModoRegistroCosecha(false);
     setModoAverageSize(false);
@@ -294,7 +292,6 @@ export function InventarioVivoView() {
     setModalAbierto(false);
     setEstanqueActual(null);
     setValores([]);
-    setCosecha(0);
     setIndiceMuestreo(0);
     setModoRegistroCosecha(false);
     setModoAverageSize(false);
@@ -307,11 +304,11 @@ export function InventarioVivoView() {
     setMetodoElegido(false);
   };
 
-  const completarEstanque = (cosechaValue?: number) => {
+  const completarEstanque = () => {
     if (!estanqueActual || !sesionActual) return;
 
-    // Usar el valor proporcionado o el estado actual de cosecha
-    const valorCosecha = cosechaValue !== undefined ? cosechaValue : cosecha;
+    // Sin registro de cosecha, siempre es 0
+    const valorCosecha = 0;
 
     // Calcular average size si hay datos
     const muestreosSeleccionadosParaAverage = Object.keys(conteosCamarones).map(Number);
@@ -384,15 +381,6 @@ export function InventarioVivoView() {
 
 
 
-  const manejarCosechaEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const valor = parseFloat((e.target as HTMLInputElement).value);
-      const valorCosecha = valor || 0;
-      setCosecha(valorCosecha);
-      completarEstanque(valorCosecha); // Pasar directamente el valor
-    }
-  };
 
   const seleccionarMuestreo = (indice: number) => {
     // Solo permitir selección si no hay un conteo pendiente y no hemos completado 2
@@ -456,11 +444,12 @@ export function InventarioVivoView() {
     }
   };
 
+  // Enfocar input cuando se abre modal en modo de registro de valores
   useEffect(() => {
-    if (modalAbierto && inputRef.current) {
+    if (modalAbierto && !modoRegistroCosecha && !modoAverageSize && inputRef.current) {
       inputRef.current.focus();
     }
-  }, [modalAbierto, indiceMuestreo, modoRegistroCosecha, modoAverageSize]);
+  }, [modalAbierto, modoRegistroCosecha, modoAverageSize]);
 
   // Listener para teclas numéricas en modo Average Size
   useEffect(() => {
@@ -1170,7 +1159,7 @@ export function InventarioVivoView() {
                       }}
                       className="bg-teal-600 hover:bg-teal-700 text-white"
                     >
-                      Continuar a registro de cosecha
+                      Continuar
                     </Button>
                     <p className="text-xs text-gray-500">
                       Presiona Enter para continuar
@@ -1181,7 +1170,7 @@ export function InventarioVivoView() {
                 )}
               </>
             ) : (
-              // Modo cosecha
+              // Resumen final
               <>
                 <div className="text-center">
                   <div className="text-xl font-bold text-green-600 mb-2">
@@ -1207,31 +1196,12 @@ export function InventarioVivoView() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Cosecha semanal (kg) - Opcional:
-                  </label>
-                  <Input
-                    ref={inputRef}
-                    type="number"
-                    placeholder="Ej: 25.5 (opcional)"
-                    className="text-center text-lg font-semibold"
-                    onKeyDown={manejarCosechaEnter}
-                    min="0"
-                    step="0.1"
-                  />
-                  <p className="text-xs text-gray-500 mt-1 text-center">
-                    Presiona Enter para finalizar y continuar
-                  </p>
-                </div>
-
-                <div className="flex gap-2">
+                <div className="flex justify-center">
                   <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => completarEstanque(0)}
+                    onClick={completarEstanque}
+                    className="bg-teal-600 hover:bg-teal-700 text-white"
                   >
-                    Omitir cosecha
+                    Finalizar Muestreos
                   </Button>
                 </div>
               </>

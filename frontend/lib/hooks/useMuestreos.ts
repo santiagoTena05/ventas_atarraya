@@ -5,11 +5,13 @@ import { supabase } from '@/lib/supabase';
 import { useGeneraciones } from '@/lib/hooks/useGeneraciones';
 
 export interface MuestreoEstanque {
+  id?: string;
   estanqueId: number;
   muestreos: number[];
   promedio: number;
   biomasa: number;
   cosecha?: number;
+  cosechaTotal?: number;
   averageSize?: number;
   muestreosSeleccionadosParaAverage?: number[];
   conteosCamarones?: {[key: number]: number};
@@ -51,6 +53,7 @@ export interface MuestreosDetalle {
   promedio: number;
   biomasa: number;
   cosecha: number;
+  cosecha_total?: number;
   observaciones?: string;
   average_size?: number;
   muestreos_seleccionados_average?: number[];
@@ -108,11 +111,13 @@ export function useMuestreos() {
           const muestreos: { [estanqueId: string]: MuestreoEstanque } = {};
           detallesSesion.forEach(detalle => {
             muestreos[detalle.estanque_id.toString()] = {
+              id: detalle.id,
               estanqueId: detalle.estanque_id,
               muestreos: detalle.muestreos || [],
               promedio: detalle.mediana || 0, // Ahora lee el campo 'mediana' de la BD
               biomasa: detalle.biomasa || 0,
               cosecha: detalle.cosecha || 0,
+              cosechaTotal: detalle.cosecha_total || 0,
               averageSize: detalle.average_size || null,
               muestreosSeleccionadosParaAverage: detalle.muestreos_seleccionados_average || null,
               conteosCamarones: detalle.conteos_camarones || null,

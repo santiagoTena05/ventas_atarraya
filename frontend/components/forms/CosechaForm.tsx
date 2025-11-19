@@ -24,6 +24,8 @@ import { useCosechas } from "@/lib/hooks/useCosechas";
 import { usePedidos, type Pedido } from "@/lib/hooks/usePedidos";
 import { usePrecios, type CalculoPrecio } from "@/lib/hooks/usePrecios";
 import { mockData } from "@/lib/mock-data";
+import { Autocomplete } from "@/components/ui/autocomplete";
+import { AddClientDialog } from "./AddClientDialog";
 
 interface CosechaFormProps {
   onCosechaRegistered?: () => void;
@@ -59,6 +61,7 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
   const [oficinas, setOficinas] = useState<any[]>([]);
   const [calculoPrecio, setCalculoPrecio] = useState<CalculoPrecio | null>(null);
   const [isCalculatingPrice, setIsCalculatingPrice] = useState(false);
+  const [isAddClientDialogOpen, setIsAddClientDialogOpen] = useState(false);
   const [datosVenta, setDatosVenta] = useState({
     clienteId: '',
     tipoClienteId: '',
@@ -262,24 +265,31 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
     console.log("🔥 onSubmit called with data:", data);
     setIsSubmitting(true);
     try {
-      console.log("🔄 Registrando cosecha...", data);
+      console.log("🔄 Preparando registro...", data);
 
-      // Registrar la cosecha primero
+      // Si es venta inmediata, validar datos ANTES de registrar la cosecha
+      if (esVentaInmediata) {
+        console.log("🛒 Validando venta inmediata...", datosVenta);
+
+        // Validar datos de venta PRIMERO
+        if (!datosVenta.clienteId || !datosVenta.tipoClienteId || !calculoPrecio) {
+          throw new Error("Por favor completa todos los campos obligatorios de la venta");
+        }
+
+        // Solo validar estatus factura si el tipo de factura no es 'NO'
+        const requiereEstatusFactura = datosVenta.tipoFactura !== 'NO';
+        if (!datosVenta.metodoPago || !datosVenta.formaPago || !datosVenta.estatusPagoCliente || !datosVenta.tipoFactura || (requiereEstatusFactura && !datosVenta.estatusFactura)) {
+          throw new Error("Por favor completa los datos de método de pago y facturación");
+        }
+      }
+
+      // Solo AHORA registrar la cosecha (después de validar todo)
       await addCosecha(data);
       const cosechaFolio = getNextFolio() - 1;
 
       // Si es venta inmediata, registrar también la venta
       if (esVentaInmediata) {
         console.log("🛒 Registrando venta inmediata...", datosVenta);
-
-        // Validar datos de venta
-        if (!datosVenta.clienteId || !datosVenta.tipoClienteId || !calculoPrecio) {
-          throw new Error("Por favor completa todos los campos obligatorios de la venta");
-        }
-
-        if (!datosVenta.metodoPago || !datosVenta.formaPago || !datosVenta.estatusPagoCliente || !datosVenta.tipoFactura || !datosVenta.estatusFactura) {
-          throw new Error("Por favor completa los datos de método de pago y facturación");
-        }
 
         // Obtener el folio de venta siguiente
         const { data: ventaFolio } = await supabase
@@ -381,6 +391,51 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
 
   const addEntrada = () => {
     appendEntrada({ estanqueId: 1, tallaId: 1, pesoKg: 0.001 });
+  };
+
+  // Función para agregar cliente (igual que en VentaForm)
+  const handleAddClient = async (clientName: string) => {
+    try {
+      // Intentar insertar en Supabase
+      const { data, error } = await supabase
+        .from('clientes')
+        .insert({
+          nombre: clientName,
+          tipo_cliente_id: 1, // Cliente Final por defecto
+          oficina: 'MV', // MV por defecto
+          activo: true
+        })
+        .select('id, nombre')
+        .single();
+
+      if (error) {
+        console.error('Error agregando cliente:', error);
+        // Fallback a agregar localmente si hay error
+        const newClient = {
+          id: clientes.length > 0 ? Math.max(...clientes.map(c => c.id)) + 1 : 1,
+          nombre: clientName
+        };
+        setClientes(prev => [...prev, newClient]);
+      } else {
+        // Agregar el cliente exitosamente insertado
+        const newClient = {
+          id: data.id,
+          nombre: data.nombre
+        };
+        setClientes(prev => [...prev, newClient]);
+      }
+
+      setDatosVenta({...datosVenta, clienteId: clientName});
+    } catch (error) {
+      console.error('Error agregando cliente:', error);
+      // Fallback a agregar localmente
+      const newClient = {
+        id: clientes.length > 0 ? Math.max(...clientes.map(c => c.id)) + 1 : 1,
+        nombre: clientName
+      };
+      setClientes(prev => [...prev, newClient]);
+      setDatosVenta({...datosVenta, clienteId: clientName});
+    }
   };
 
   if (isLoadingData) {
@@ -656,18 +711,15 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label className="text-sm font-medium text-gray-700">Cliente *</Label>
-                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, clienteId: value})}>
-                          <SelectTrigger className="border-gray-300">
-                            <SelectValue placeholder="Seleccionar cliente" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clientes.map((cliente) => (
-                              <SelectItem key={cliente.id} value={cliente.id.toString()}>
-                                {cliente.nombre}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Autocomplete
+                          options={clientes.map(c => ({ id: c.id, name: c.nombre }))}
+                          value={datosVenta.clienteId || ""}
+                          onChange={(value) => setDatosVenta({...datosVenta, clienteId: value})}
+                          placeholder="Buscar cliente o escribir nuevo nombre"
+                          className="border-gray-300 focus:border-gray-900 focus:ring-gray-900"
+                          onAddNew={() => setIsAddClientDialogOpen(true)}
+                          addNewText="Agregar nuevo cliente"
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -839,21 +891,23 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium text-gray-700">Estatus Factura *</Label>
-                        <Select onValueChange={(value) => setDatosVenta({...datosVenta, estatusFactura: value})}>
-                          <SelectTrigger className="border-gray-300">
-                            <SelectValue placeholder="Seleccionar estatus" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {mockData.estatusFactura.map((estatus) => (
-                              <SelectItem key={estatus.id} value={estatus.name}>
-                                {estatus.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {datosVenta.tipoFactura !== 'NO' && (
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium text-gray-700">Estatus Factura *</Label>
+                          <Select onValueChange={(value) => setDatosVenta({...datosVenta, estatusFactura: value})}>
+                            <SelectTrigger className="border-gray-300">
+                              <SelectValue placeholder="Seleccionar estatus" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {mockData.estatusFactura.map((estatus) => (
+                                <SelectItem key={estatus.id} value={estatus.name}>
+                                  {estatus.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -940,6 +994,12 @@ export function CosechaForm({ onCosechaRegistered }: CosechaFormProps) {
           </form>
         </CardContent>
       </Card>
+
+      <AddClientDialog
+        isOpen={isAddClientDialogOpen}
+        onClose={() => setIsAddClientDialogOpen(false)}
+        onAddClient={handleAddClient}
+      />
     </div>
   );
 }
