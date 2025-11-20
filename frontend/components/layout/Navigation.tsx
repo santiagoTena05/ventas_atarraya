@@ -184,13 +184,13 @@ export function Navigation() {
             )}
 
             <Button
-              variant={pathname === '/planner' ? 'default' : 'outline'}
+              variant={pathname === '/coming-soon' ? 'default' : 'outline'}
               className={`flex items-center gap-2 ${
-                pathname === '/planner'
+                pathname === '/coming-soon'
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
-              onClick={() => router.push('/planner')}
+              onClick={() => router.push('/coming-soon')}
             >
               <Calendar className="h-4 w-4" />
               Planner
