@@ -17,6 +17,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Pencil,
   Save,
   X,
@@ -30,25 +37,30 @@ interface Estanque {
   id: number;
   nombre: string;
   codigo?: string;
-  capacidad_kg?: number;
-  ubicacion?: string;
+  area?: number;
+  ubicacion?: number;
   activo?: boolean;
   notas?: string;
   created_at: string;
   updated_at?: string;
+  oficinas?: {
+    id: number;
+    nombre: string;
+  };
 }
 
 interface EstanqueForm {
   nombre: string;
   codigo: string;
-  capacidad_kg: number | null;
-  ubicacion: string;
+  area: number | null;
+  ubicacion: number | null;
   notas: string;
   activo: boolean;
 }
 
 export function AdminEstanquesView() {
   const [estanques, setEstanques] = useState<Estanque[]>([]);
+  const [oficinas, setOficinas] = useState<{id: number, nombre: string}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -60,13 +72,34 @@ export function AdminEstanquesView() {
   const [newEstanqueForm, setNewEstanqueForm] = useState<EstanqueForm>({
     nombre: '',
     codigo: '',
-    capacidad_kg: null,
-    ubicacion: '',
+    area: null,
+    ubicacion: null,
     notas: '',
     activo: true
   });
 
-  // Cargar estanques
+  // Cargar oficinas
+  const loadOficinas = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('oficinas')
+        .select('id, nombre')
+        .eq('activa', true)
+        .order('nombre');
+
+      if (error) {
+        console.error('❌ Error cargando oficinas:', error);
+        return;
+      }
+
+      setOficinas(data || []);
+      console.log(`✅ Cargadas ${data?.length || 0} oficinas`);
+    } catch (error) {
+      console.error('❌ Error cargando oficinas:', error);
+    }
+  };
+
+  // Cargar estanques con JOIN a oficinas
   const loadEstanques = async () => {
     try {
       setIsLoading(true);
@@ -74,7 +107,13 @@ export function AdminEstanquesView() {
 
       const { data, error } = await supabase
         .from('estanques')
-        .select('*')
+        .select(`
+          *,
+          oficinas (
+            id,
+            nombre
+          )
+        `)
         .order('nombre');
 
       if (error) {
@@ -102,7 +141,7 @@ export function AdminEstanquesView() {
         .insert({
           nombre: formData.nombre,
           codigo: formData.codigo || null,
-          capacidad_kg: formData.capacidad_kg,
+          area: formData.area,
           ubicacion: formData.ubicacion || null,
           notas: formData.notas || null,
           activo: formData.activo,
@@ -137,7 +176,7 @@ export function AdminEstanquesView() {
         .update({
           nombre: formData.nombre,
           codigo: formData.codigo || null,
-          capacidad_kg: formData.capacidad_kg,
+          area: formData.area,
           ubicacion: formData.ubicacion || null,
           notas: formData.notas || null,
           activo: formData.activo,
@@ -171,8 +210,8 @@ export function AdminEstanquesView() {
       return await updateEstanque(id, {
         nombre: estanque.nombre,
         codigo: estanque.codigo || '',
-        capacidad_kg: estanque.capacidad_kg,
-        ubicacion: estanque.ubicacion || '',
+        area: estanque.area,
+        ubicacion: estanque.ubicacion,
         notas: estanque.notas || '',
         activo: !estanque.activo
       });
@@ -188,8 +227,8 @@ export function AdminEstanquesView() {
     setEditForm({
       nombre: estanque.nombre,
       codigo: estanque.codigo || '',
-      capacidad_kg: estanque.capacidad_kg,
-      ubicacion: estanque.ubicacion || '',
+      area: estanque.area,
+      ubicacion: estanque.ubicacion,
       notas: estanque.notas || '',
       activo: estanque.activo ?? true
     });
@@ -199,7 +238,7 @@ export function AdminEstanquesView() {
   const filteredEstanques = estanques.filter(estanque =>
     estanque.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     estanque.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    estanque.ubicacion?.toLowerCase().includes(searchTerm.toLowerCase())
+    estanque.oficinas?.nombre?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Handlers
@@ -242,7 +281,7 @@ export function AdminEstanquesView() {
         success = await createEstanque(form);
         if (success) {
           setNewEstanqueForm({
-            nombre: '', codigo: '', capacidad_kg: null, ubicacion: '', notas: '', activo: true
+            nombre: '', codigo: '', area: null, ubicacion: null, notas: '', activo: true
           });
           setShowAddDialog(false);
         }
@@ -256,6 +295,7 @@ export function AdminEstanquesView() {
   };
 
   useEffect(() => {
+    loadOficinas();
     loadEstanques();
   }, []);
 
@@ -270,7 +310,7 @@ export function AdminEstanquesView() {
     );
   }
 
-  const totalCapacidad = estanques.reduce((sum, est) => sum + (est.capacidad_kg || 0), 0);
+  const totalArea = estanques.reduce((sum, est) => sum + (est.area || 0), 0);
   const estanquesActivos = estanques.filter(e => e.activo !== false);
 
   return (
@@ -306,9 +346,9 @@ export function AdminEstanquesView() {
             <div className="flex items-center gap-3">
               <Package className="h-8 w-8 text-purple-600" />
               <div>
-                <p className="text-sm text-gray-600">Capacidad Total</p>
+                <p className="text-sm text-gray-600">Área Total</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  {totalCapacidad.toLocaleString()}kg
+                  {totalArea.toLocaleString()}m²
                 </p>
               </div>
             </div>
@@ -320,9 +360,9 @@ export function AdminEstanquesView() {
             <div className="flex items-center gap-3">
               <Package className="h-8 w-8 text-orange-600" />
               <div>
-                <p className="text-sm text-gray-600">Cap. Promedio</p>
+                <p className="text-sm text-gray-600">Área Promedio</p>
                 <p className="text-2xl font-bold text-orange-600">
-                  {estanques.length ? Math.round(totalCapacidad / estanques.length).toLocaleString() : 0}kg
+                  {estanques.length ? Math.round(totalArea / estanques.length).toLocaleString() : 0}m²
                 </p>
               </div>
             </div>
@@ -382,22 +422,32 @@ export function AdminEstanquesView() {
                           />
                         </div>
                         <div>
-                          <Label>Capacidad (kg)</Label>
+                          <Label>Área (m²)</Label>
                           <Input
                             type="number"
                             step="0.1"
-                            value={editForm.capacidad_kg || ''}
-                            onChange={(e) => setEditForm({...editForm, capacidad_kg: parseFloat(e.target.value) || null})}
-                            placeholder="Capacidad en kg"
+                            value={editForm.area || ''}
+                            onChange={(e) => setEditForm({...editForm, area: parseFloat(e.target.value) || null})}
+                            placeholder="Área en m²"
                           />
                         </div>
                         <div>
                           <Label>Ubicación</Label>
-                          <Input
-                            value={editForm.ubicacion}
-                            onChange={(e) => setEditForm({...editForm, ubicacion: e.target.value})}
-                            placeholder="Ubicación del estanque"
-                          />
+                          <Select
+                            value={editForm.ubicacion?.toString() || ''}
+                            onValueChange={(value) => setEditForm({...editForm, ubicacion: parseInt(value) || null})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar oficina" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {oficinas.map((oficina) => (
+                                <SelectItem key={oficina.id} value={oficina.id.toString()}>
+                                  {oficina.nombre}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                       <div>
@@ -450,16 +500,16 @@ export function AdminEstanquesView() {
                           </Badge>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-2">
-                          {estanque.capacidad_kg && (
+                          {estanque.area && (
                             <div className="flex items-center gap-1">
                               <Package className="h-3 w-3" />
-                              {estanque.capacidad_kg.toLocaleString()} kg
+                              {estanque.area.toLocaleString()} m²
                             </div>
                           )}
-                          {estanque.ubicacion && (
+                          {estanque.oficinas && (
                             <div className="flex items-center gap-1">
                               <MapPin className="h-3 w-3" />
-                              {estanque.ubicacion}
+                              {estanque.oficinas.nombre}
                             </div>
                           )}
                           {estanque.notas && (
@@ -535,22 +585,32 @@ export function AdminEstanquesView() {
                 />
               </div>
               <div>
-                <Label>Capacidad (kg)</Label>
+                <Label>Área (m²)</Label>
                 <Input
                   type="number"
                   step="0.1"
-                  value={newEstanqueForm.capacidad_kg || ''}
-                  onChange={(e) => setNewEstanqueForm({...newEstanqueForm, capacidad_kg: parseFloat(e.target.value) || null})}
-                  placeholder="Capacidad en kg"
+                  value={newEstanqueForm.area || ''}
+                  onChange={(e) => setNewEstanqueForm({...newEstanqueForm, area: parseFloat(e.target.value) || null})}
+                  placeholder="Área en m²"
                 />
               </div>
               <div>
                 <Label>Ubicación</Label>
-                <Input
-                  value={newEstanqueForm.ubicacion}
-                  onChange={(e) => setNewEstanqueForm({...newEstanqueForm, ubicacion: e.target.value})}
-                  placeholder="Ubicación del estanque"
-                />
+                <Select
+                  value={newEstanqueForm.ubicacion?.toString() || ''}
+                  onValueChange={(value) => setNewEstanqueForm({...newEstanqueForm, ubicacion: parseInt(value) || null})}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar oficina" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {oficinas.map((oficina) => (
+                      <SelectItem key={oficina.id} value={oficina.id.toString()}>
+                        {oficina.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>

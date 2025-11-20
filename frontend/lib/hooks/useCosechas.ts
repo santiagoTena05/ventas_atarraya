@@ -35,11 +35,24 @@ export function useCosechas() {
             totalVentas: cosecha.total_ventas || 0,
             // Estanques y tallas procesados desde string
             estanques: cosecha.estanques_detalle
-              ? cosecha.estanques_detalle.split(', ').map((item: string, index: number) => {
+              ? cosecha.estanques_detalle.split(', ').map((item: string) => {
                   const [nombre, peso] = item.split(': ');
+
+                  // Extraer el ID real del estanque desde el nombre
+                  let estanqueId = 0;
+                  const nombreLimpio = nombre || 'Sin nombre';
+
+                  // Buscar patrones como "Estanque 5", "EST-05", etc.
+                  const matchEstanque = nombreLimpio.match(/(?:estanque|est)[\s-]*(\d+)/i);
+                  if (matchEstanque) {
+                    estanqueId = parseInt(matchEstanque[1]);
+                  }
+
+                  console.log(`🏊 Procesando estanque: "${nombreLimpio}" -> ID extraído: ${estanqueId}`);
+
                   return {
-                    id: index + 1, // ID temporal
-                    nombre: nombre || 'Sin nombre',
+                    id: estanqueId, // ID real extraído del nombre
+                    nombre: nombreLimpio,
                     pesoKg: peso ? parseFloat(peso.replace('kg', '')) : 0,
                     porcentaje: 0, // Se calculará si es necesario
                   };
@@ -208,11 +221,22 @@ export function useCosechas() {
           totalVentas: cosecha.total_ventas || 0,
           // Estanques y tallas procesados desde string
           estanques: cosecha.estanques_detalle
-            ? cosecha.estanques_detalle.split(', ').map((item: string, index: number) => {
+            ? cosecha.estanques_detalle.split(', ').map((item: string) => {
                 const [nombre, peso] = item.split(': ');
+
+                // Extraer el ID real del estanque desde el nombre
+                let estanqueId = 0;
+                const nombreLimpio = nombre || 'Sin nombre';
+
+                // Buscar patrones como "Estanque 5", "EST-05", etc.
+                const matchEstanque = nombreLimpio.match(/(?:estanque|est)[\s-]*(\d+)/i);
+                if (matchEstanque) {
+                  estanqueId = parseInt(matchEstanque[1]);
+                }
+
                 return {
-                  id: index + 1, // ID temporal
-                  nombre: nombre || 'Sin nombre',
+                  id: estanqueId, // ID real extraído del nombre
+                  nombre: nombreLimpio,
                   pesoKg: peso ? parseFloat(peso.replace('kg', '')) : 0,
                   porcentaje: 0, // Se calculará si es necesario
                 };

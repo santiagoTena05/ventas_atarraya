@@ -5,6 +5,7 @@ import { useEstanques } from "@/lib/hooks/useEstanques";
 import { useMuestreos } from "@/lib/hooks/useMuestreos";
 import { usePoblacionesIniciales } from "@/lib/hooks/usePoblacionesIniciales";
 import { useEditLogs } from "@/lib/hooks/useEditLogs";
+import { useCosechasSemanal } from "@/lib/hooks/useCosechasSemanal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,9 +61,10 @@ type SortDirection = 'asc' | 'desc';
 
 export function InventarioCalculosView() {
   const { estanques: estanquesSupabase, isLoading: loadingEstanques, error } = useEstanques();
-  const { sesiones, loading: loadingMuestreos, obtenerGeneraciones } = useMuestreos();
+  const { sesiones, loading: loadingMuestreos, obtenerGeneraciones, recalcularSemanasDeChiltivo } = useMuestreos();
   const { obtenerPoblacionInicial, loading: loadingPoblaciones } = usePoblacionesIniciales();
   const { isFieldEdited, getFieldLastEdit, loadLogs } = useEditLogs('muestreos_detalle');
+  const { actualizarCosechasEnMuestreos, isCalculating, obtenerDetalleCosechasMuestreo } = useCosechasSemanal();
   const [calculos, setCalculos] = useState<CalculoCompleto[]>([]);
   const [filtroCiclo, setFiltroCiclo] = useState<string>("todos");
   const [sortField, setSortField] = useState<SortField>('ciclo');
@@ -302,6 +304,15 @@ export function InventarioCalculosView() {
       // Refrescar los logs para mostrar el indicador
       await loadLogs();
 
+      // Si se editó cosecha o cosecha_total, recalcular los valores automáticos
+      if (field === 'harvested' || field === 'hWeek') {
+        console.log('🔄 Recalculando cosechas automáticas después de edición manual...');
+        // Pequeño delay para asegurar que la BD esté actualizada
+        setTimeout(() => {
+          actualizarCosechasEnMuestreos();
+        }, 500);
+      }
+
       // Actualizar estado local
       setCalculos(prev => prev.map(c =>
         c.id === calculoId ? { ...c, [field]: dbValue } : c
@@ -361,7 +372,8 @@ export function InventarioCalculosView() {
     field,
     value,
     isEditable = false,
-    formatter = (v) => v
+    formatter = (v) => v,
+    align = "left"
   }: {
     tableKey: string;
     rowId: string;
@@ -369,6 +381,7 @@ export function InventarioCalculosView() {
     value: any;
     isEditable?: boolean;
     formatter?: (value: any) => string;
+    align?: "left" | "center" | "right";
   }) => {
     const isEditingThis = editingCell?.tableKey === tableKey &&
                          editingCell?.rowId === rowId &&
@@ -446,9 +459,12 @@ export function InventarioCalculosView() {
       );
     }
 
+    // Obtener clases de alineación
+    const alignClass = align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+
     // Contenido base con indicador de edición
     const baseContent = (
-      <div className="flex items-center gap-1">
+      <div className={`flex items-center gap-1 ${alignClass}`}>
         {formatter(value)}
         {wasEdited && (
           <div className="w-2 h-2 bg-orange-400 rounded-full flex-shrink-0" title="Campo editado" />
@@ -744,8 +760,56 @@ export function InventarioCalculosView() {
               📋 No hay muestreos registrados - Ve a Inventario Vivo para registrar datos
             </p>
           )}
+          {isCalculating && (
+            <p className="text-xs text-blue-600 mt-1">
+              🔄 Sincronizando cosechas con muestreos...
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
+          {/* Botones ocultos - sincronización automática activada */}
+          {/*
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={recalcularSemanasDeChiltivo}
+            disabled={isCalculating || loadingMuestreos}
+          >
+            <Calculator className="h-4 w-4 mr-2" />
+            Recalcular Semanas
+          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={actualizarCosechasEnMuestreos}
+                  disabled={isCalculating}
+                >
+                  {isCalculating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                      Sincronizando...
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="h-4 w-4 mr-2" />
+                      Forzar Resincronización
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="text-xs">
+                  Las cosechas se sincronizan automáticamente al registrarlas.
+                  Este botón permite forzar una resincronización manual si es necesario.
+                  Solo actualiza fechas posteriores al 5 de noviembre.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          */}
           <Button variant="outline" size="sm">
             <Download className="h-4 w-4 mr-2" />
             Exportar
@@ -808,7 +872,7 @@ export function InventarioCalculosView() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">
-                Cálculos Detallados - {new Date(fecha).toLocaleDateString('es-MX', {
+                Cálculos Detallados - {new Date(fecha + 'T12:00:00').toLocaleDateString('es-MX', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric'
@@ -916,8 +980,40 @@ export function InventarioCalculosView() {
                     </div>
                   </TableHead>
                   <TableHead className="text-center">Culture Weeks</TableHead>
-                  <TableHead className="text-right">Weekly Harvest</TableHead>
-                  <TableHead className="text-center">Total Harvest</TableHead>
+                  <TableHead className="text-right">
+                    <div className="flex items-center justify-end">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help">Weekly Harvest 📊</span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">
+                              Cosecha semanal calculada automáticamente desde el Registro de Cosechas.
+                              También editable manualmente.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <div className="flex items-center justify-end">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help">Total Harvest 📈</span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">
+                              Cosecha total acumulativa calculada automáticamente.
+                              También editable manualmente.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -939,6 +1035,7 @@ export function InventarioCalculosView() {
                         value={calculo.averageSize}
                         isEditable={true}
                         formatter={formatNumber}
+                        align="right"
                       />
                     </TableCell>
                     <TableCell className="text-right">
@@ -952,6 +1049,7 @@ export function InventarioCalculosView() {
                         value={calculo.biomass}
                         isEditable={true}
                         formatter={formatWeight}
+                        align="right"
                       />
                     </TableCell>
                     <TableCell className="text-right">
@@ -979,9 +1077,10 @@ export function InventarioCalculosView() {
                         value={calculo.harvested}
                         isEditable={true}
                         formatter={(value) => value > 0 ? formatNumber(value) : "0"}
+                        align="right"
                       />
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="text-right">
                       <EditableCell
                         tableKey={fecha}
                         rowId={calculo.id}
@@ -989,6 +1088,7 @@ export function InventarioCalculosView() {
                         value={calculo.hWeek}
                         isEditable={true}
                         formatter={(value) => value > 0 ? value.toString() : "-"}
+                        align="right"
                       />
                     </TableCell>
                   </TableRow>

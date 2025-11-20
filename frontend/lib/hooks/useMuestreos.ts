@@ -189,19 +189,20 @@ export function useMuestreos() {
           // Calcular semana de cultivo basándose en muestreos anteriores del mismo estanque
           let semanaCultivo = 1; // Default para primer muestreo
 
-          // Buscar el muestreo más reciente del mismo estanque y generación
+          // Buscar el muestreo más reciente del mismo estanque y generación ANTES de la fecha actual
           const { data: muestreosAnteriores } = await supabase
             .from('muestreos_detalle')
             .select(`
               semana_cultivo,
-              created_at,
               muestreos_sesiones!inner (
-                generacion_id
+                generacion_id,
+                fecha
               )
             `)
             .eq('estanque_id', parseInt(estanqueId))
             .eq('muestreos_sesiones.generacion_id', generacion.id)
-            .order('created_at', { ascending: false })
+            .lt('muestreos_sesiones.fecha', sesion.fecha) // SOLO muestreos ANTERIORES a la fecha actual
+            .order('muestreos_sesiones(fecha)', { ascending: false }) // Ordenar por fecha real, no created_at
             .limit(1);
 
           if (muestreosAnteriores && muestreosAnteriores.length > 0) {
@@ -302,6 +303,130 @@ export function useMuestreos() {
     return datos;
   };
 
+  // Función para recalcular semanas de cultivo de todos los muestreos existentes
+  const recalcularSemanasDeChiltivo = async () => {
+    try {
+      console.log('🔄 Recalculando semanas de cultivo...');
+
+      // Obtener todos los muestreos agrupados por generación y estanque
+      const { data: todosLosMuestreos, error } = await supabase
+        .from('muestreos_detalle')
+        .select(`
+          id,
+          estanque_id,
+          semana_cultivo,
+          muestreos_sesiones!inner (
+            fecha,
+            generacion_id
+          )
+        `)
+        .order('muestreos_sesiones(fecha)', { ascending: true }); // Ordenar por fecha
+
+      if (error) {
+        console.error('Error obteniendo muestreos:', error);
+        return false;
+      }
+
+      // Agrupar por generación y estanque
+      const muestreosPorEstanqueYGeneracion = new Map();
+
+      todosLosMuestreos?.forEach(muestreo => {
+        const key = `${(muestreo as any).muestreos_sesiones.generacion_id}-${muestreo.estanque_id}`;
+
+        if (!muestreosPorEstanqueYGeneracion.has(key)) {
+          muestreosPorEstanqueYGeneracion.set(key, []);
+        }
+
+        muestreosPorEstanqueYGeneracion.get(key).push(muestreo);
+      });
+
+      // Recalcular semanas para cada grupo
+      const actualizaciones: Promise<any>[] = [];
+
+      muestreosPorEstanqueYGeneracion.forEach((muestreosGrupo, key) => {
+        // Ordenar por fecha dentro del grupo
+        muestreosGrupo.sort((a: any, b: any) =>
+          new Date(a.muestreos_sesiones.fecha).getTime() - new Date(b.muestreos_sesiones.fecha).getTime()
+        );
+
+        // Buscar el primer muestreo que YA tenga un valor establecido manualmente
+        let baseSemanaCultivo = null;
+        let baseFechaIndex = -1;
+
+        // Buscar muestreos con valores ya establecidos manualmente
+        // Consideramos como "establecido" cualquier valor que no sea null y que tenga sentido
+        for (let i = 0; i < muestreosGrupo.length; i++) {
+          const muestreo = muestreosGrupo[i];
+          if (muestreo.semana_cultivo && muestreo.semana_cultivo > 0) {
+            // Si encontramos el primer valor manual establecido, usarlo como base
+            baseSemanaCultivo = muestreo.semana_cultivo;
+            baseFechaIndex = i;
+            console.log(`🎯 Encontrado punto base: fecha ${(muestreo as any).muestreos_sesiones.fecha}, semana ${baseSemanaCultivo} (índice ${i})`);
+            break; // Usar el primer valor manual encontrado
+          }
+        }
+
+        // Si no hay base establecida, usar secuencia normal (1, 2, 3...)
+        if (baseSemanaCultivo === null) {
+          console.log(`ℹ️ No hay valores base establecidos para ${key}, usando secuencia desde 1`);
+          muestreosGrupo.forEach((muestreo: any, index: number) => {
+            const semanaCultivoCorrecta = index + 1;
+
+            if (muestreo.semana_cultivo !== semanaCultivoCorrecta) {
+              console.log(`📊 Actualizando ${muestreo.id}: semana ${muestreo.semana_cultivo} -> ${semanaCultivoCorrecta}`);
+
+              const actualizacion = supabase
+                .from('muestreos_detalle')
+                .update({ semana_cultivo: semanaCultivoCorrecta })
+                .eq('id', muestreo.id);
+
+              actualizaciones.push(actualizacion);
+            }
+          });
+        } else {
+          // Calcular desde el punto base establecido
+          console.log(`📐 Calculando desde punto base: semana ${baseSemanaCultivo} en índice ${baseFechaIndex}`);
+
+          muestreosGrupo.forEach((muestreo: any, index: number) => {
+            // Calcular la semana correcta basándose en la distancia del punto base
+            const diferencia = index - baseFechaIndex;
+            const semanaCultivoCorrecta = baseSemanaCultivo + diferencia;
+
+            // Solo actualizar si es diferente Y si no es el punto base (no sobrescribir valores manuales)
+            if (muestreo.semana_cultivo !== semanaCultivoCorrecta && index !== baseFechaIndex) {
+              console.log(`📊 Actualizando ${muestreo.id}: semana ${muestreo.semana_cultivo} -> ${semanaCultivoCorrecta} (base+${diferencia})`);
+
+              const actualizacion = supabase
+                .from('muestreos_detalle')
+                .update({ semana_cultivo: semanaCultivoCorrecta })
+                .eq('id', muestreo.id);
+
+              actualizaciones.push(actualizacion);
+            }
+          });
+        }
+      });
+
+      // Ejecutar todas las actualizaciones
+      if (actualizaciones.length > 0) {
+        console.log(`🚀 Ejecutando ${actualizaciones.length} actualizaciones...`);
+        await Promise.all(actualizaciones);
+        console.log('✅ Semanas de cultivo recalculadas exitosamente');
+
+        // Recargar datos
+        await loadSesiones();
+        return true;
+      } else {
+        console.log('ℹ️ No se necesitan actualizaciones');
+        return true;
+      }
+
+    } catch (error) {
+      console.error('❌ Error recalculando semanas de cultivo:', error);
+      return false;
+    }
+  };
+
   // Recargar datos
   const refresh = () => {
     loadSesiones();
@@ -323,6 +448,7 @@ export function useMuestreos() {
     obtenerGeneraciones,
     obtenerFechas,
     calcularDatosGeneraciones,
-    refresh
+    refresh,
+    recalcularSemanasDeChiltivo
   };
 }

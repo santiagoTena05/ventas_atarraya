@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart, Droplets } from "lucide-react";
+import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart, Droplets, Calendar } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -182,6 +182,19 @@ export function Navigation() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
+
+            <Button
+              variant={pathname === '/planner' ? 'default' : 'outline'}
+              className={`flex items-center gap-2 ${
+                pathname === '/planner'
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => router.push('/planner')}
+            >
+              <Calendar className="h-4 w-4" />
+              Planner
+            </Button>
 
             <Button
               variant={pathname === '/admin' ? 'default' : 'outline'}
