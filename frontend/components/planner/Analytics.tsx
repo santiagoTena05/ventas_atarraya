@@ -8,6 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { BarChart3, Target, TrendingUp } from 'lucide-react';
+import { useGeneraciones } from '@/hooks/useGeneraciones';
+import { useGenetics } from '@/hooks/useGenetics';
+import {
+  generateOptimizedSeedingPlan,
+  SeedingParameters,
+  Tank
+} from '@/lib/algorithms/seedingOptimizer';
 
 interface LocationData {
   id: number;
@@ -24,8 +31,9 @@ interface LocationData {
 interface AnalyticsProps {
   isOpen: boolean;
   onClose: () => void;
-  location: LocationData;
+  location: LocationData | null;
   locationKey: string;
+  onApplyPlanToGantt?: (planData: any) => void;
 }
 
 // Datos mock para análisis
@@ -50,7 +58,9 @@ const mockAnalytics = {
   }
 };
 
-export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsProps) {
+export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanToGantt }: AnalyticsProps) {
+  const { getGeneracionOptions } = useGeneraciones();
+  const { genetics, loading: geneticsLoading } = useGenetics();
   const [selectedTab, setSelectedTab] = useState('utilization');
   const [selectedWeek, setSelectedWeek] = useState(0);
   const [seedingParams, setSeedingParams] = useState({
@@ -60,14 +70,16 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
     mortalityPercentage: 20,
     nurseryDuration: 3,
     growoutDuration: 8,
-    generation: '1',
-    genetics: 'Red'
+    generation: '',
+    geneticsId: 1,
+    startWeek: 0
   });
 
   const [calculatedResults, setCalculatedResults] = useState<any>(null);
 
   // Calcular número de semanas
   const getNumWeeks = () => {
+    if (!location?.endDate || !location?.startDate) return 52; // Default to 52 weeks
     const diffTime = Math.abs(location.endDate.getTime() - location.startDate.getTime());
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7));
   };
@@ -76,7 +88,7 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
   const generateWeekOptions = () => {
     const numWeeks = getNumWeeks();
     const options = [];
-    const startDate = new Date(location.startDate);
+    const startDate = location?.startDate ? new Date(location.startDate) : new Date('2025-01-06');
 
     for (let i = 0; i < numWeeks; i++) {
       const weekDate = new Date(startDate);
@@ -98,37 +110,109 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
 
   const weekOptions = generateWeekOptions();
 
-  // Calcular plan de siembra
+  // Calcular plan de siembra optimizado
   const calculateSeedingPlan = () => {
-    const { numberOfNurseries, nurseryDensity, growoutDensity, mortalityPercentage } = seedingParams;
+    if (!location) return;
 
-    // Obtener tanques disponibles (simulado)
-    const availableTanks = Object.keys(location.tankSizes).slice(0, numberOfNurseries);
+    try {
+      // Simular tanques disponibles
+      const availableTanks: Tank[] = Object.entries(location.tankSizes).map(([id, area]) => ({
+        id: parseInt(id),
+        name: location.tankNames[parseInt(id)] || `Tanque ${id}`,
+        type: location.tankTypes[parseInt(id)] || 'General',
+        area: area
+      }));
 
-    let totalLarvae = 0;
-    let totalArea = 0;
+      // Datos existentes del gantt
+      const existingData = location.data || {};
 
-    availableTanks.forEach(tankId => {
-      const size = location.tankSizes[parseInt(tankId)] || 23.5;
-      totalLarvae += size * nurseryDensity;
-      totalArea += size;
+      // Buscar la semana más temprana disponible
+      let optimalStartWeek = seedingParams.startWeek;
+      const numWeeks = getNumWeeks();
+
+      // Buscar desde la semana actual hacia adelante para encontrar el slot más próximo
+      for (let week = 0; week < numWeeks - (seedingParams.nurseryDuration + seedingParams.growoutDuration); week++) {
+        const parameters: SeedingParameters = {
+          ...seedingParams,
+          startWeek: week
+        };
+
+        const testResult = generateOptimizedSeedingPlan(
+          parameters,
+          availableTanks,
+          existingData,
+          numWeeks
+        );
+
+        if (testResult.success) {
+          optimalStartWeek = week;
+          break;
+        }
+      }
+
+      // Generar plan con la semana óptima encontrada
+      const parameters: SeedingParameters = {
+        ...seedingParams,
+        startWeek: optimalStartWeek
+      };
+
+      const result = generateOptimizedSeedingPlan(
+        parameters,
+        availableTanks,
+        existingData,
+        numWeeks
+      );
+
+      if (result.success && result.plan) {
+        const { plan } = result;
+
+        const results = {
+          totalLarvae: plan.summary.totalLarvae,
+          totalArea: plan.summary.nurseryAreaUsed,
+          expectedSurvival: plan.summary.expectedSurvivors,
+          requiredGrowoutArea: plan.summary.growoutAreaRequired.toFixed(1),
+          harvestWeight: (plan.summary.expectedSurvivors * 0.02).toFixed(1), // 20g promedio
+          survivalRate: plan.summary.survivalRate.toFixed(1),
+          nurseryTanks: plan.nurseryTanks.length,
+          requiredGrowoutTanks: plan.growoutTanks.length,
+          optimalStartWeek,
+          optimizedPlan: plan
+        };
+
+        setCalculatedResults(results);
+      } else {
+        alert(`Error al generar plan: ${result.error}`);
+        setCalculatedResults(null);
+      }
+    } catch (error) {
+      console.error('Error calculating seeding plan:', error);
+      alert('Error al calcular el plan de siembra');
+      setCalculatedResults(null);
+    }
+  };
+
+  // Aplicar plan de siembra optimizado al gantt
+  const applyPlanToGantt = () => {
+    if (!calculatedResults?.optimizedPlan || !onApplyPlanToGantt) return;
+
+    const { optimizedPlan } = calculatedResults;
+
+    // Llamar a la función para aplicar al gantt
+    onApplyPlanToGantt({
+      ganttData: optimizedPlan.ganttData,
+      planDetails: {
+        generation: seedingParams.generation,
+        genetics: genetics.find(g => g.id === seedingParams.geneticsId)?.name || 'Unknown',
+        totalCycle: seedingParams.nurseryDuration + seedingParams.growoutDuration,
+        nurseryTanks: optimizedPlan.nurseryTanks.length,
+        growoutTanks: optimizedPlan.growoutTanks.length,
+        expectedHarvest: calculatedResults.harvestWeight,
+        startWeek: calculatedResults.optimalStartWeek
+      }
     });
 
-    const survivalRate = (100 - mortalityPercentage) / 100;
-    const expectedSurvival = totalLarvae * survivalRate;
-    const requiredGrowoutArea = expectedSurvival / growoutDensity;
-    const harvestWeight = expectedSurvival * 0.02; // 20g promedio
-
-    setCalculatedResults({
-      totalLarvae: Math.floor(totalLarvae),
-      totalArea,
-      expectedSurvival: Math.floor(expectedSurvival),
-      requiredGrowoutArea: requiredGrowoutArea.toFixed(1),
-      harvestWeight: harvestWeight.toFixed(1),
-      survivalRate: (survivalRate * 100).toFixed(1),
-      nurseryTanks: availableTanks.length,
-      requiredGrowoutTanks: Math.ceil(requiredGrowoutArea / 45) // Asumiendo tanques de 45m²
-    });
+    // Cerrar el modal después de aplicar
+    onClose();
   };
 
   // Analizar utilización de tanques por semana
@@ -148,7 +232,24 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
 
   const currentWeekUtilization = getTankUtilizationForWeek(selectedWeek);
 
+
   if (!isOpen) return null;
+
+  // Show loading state when location is not available
+  if (!location) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Analytics y Planificación</DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-8">
+            <p className="text-gray-500">Selecciona una ubicación para ver las analíticas</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -267,7 +368,7 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                       <CardContent className="p-6">
                         <div className="text-sm text-gray-600 mb-2">Tasa de Utilización</div>
                         <div className="text-2xl font-semibold text-blue-600">
-                          {((location.numTanks - currentWeekUtilization.ready) / location.numTanks * 100).toFixed(1)}%
+                          {location ? ((location.numTanks - currentWeekUtilization.ready) / location.numTanks * 100).toFixed(1) : 0}%
                         </div>
                       </CardContent>
                     </Card>
@@ -307,22 +408,36 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Generación</label>
-                      <Input
-                        value={seedingParams.generation}
-                        onChange={(e) => setSeedingParams({...seedingParams, generation: e.target.value})}
-                        placeholder="Ej: 1"
-                      />
+                      <Select value={seedingParams.generation || 'none'} onValueChange={(value) => setSeedingParams({...seedingParams, generation: value === 'none' ? '' : value})}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar generación" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguna</SelectItem>
+                          {getGeneracionOptions().map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Genética</label>
-                      <Select value={seedingParams.genetics} onValueChange={(value) => setSeedingParams({...seedingParams, genetics: value})}>
+                      <Select
+                        value={seedingParams.geneticsId.toString()}
+                        onValueChange={(value) => setSeedingParams({...seedingParams, geneticsId: parseInt(value)})}
+                        disabled={geneticsLoading}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Red">Red</SelectItem>
-                          <SelectItem value="Bolt">Bolt</SelectItem>
-                          <SelectItem value="Dragon">Dragon</SelectItem>
+                          {genetics.map((genetic) => (
+                            <SelectItem key={genetic.id} value={genetic.id.toString()}>
+                              {genetic.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -336,7 +451,7 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                         value={seedingParams.numberOfNurseries}
                         onChange={(e) => setSeedingParams({...seedingParams, numberOfNurseries: parseInt(e.target.value) || 1})}
                         min="1"
-                        max={location.numTanks}
+                        max={location?.numTanks || 15}
                       />
                     </div>
                     <div>
@@ -457,6 +572,10 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
 
                       <div className="pt-4 border-t">
                         <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600">Semana Óptima de Inicio:</span>
+                          <Badge className="bg-green-100 text-green-800">Semana {calculatedResults.optimalStartWeek + 1}</Badge>
+                        </div>
+                        <div className="flex justify-between items-center text-sm mt-2">
                           <span className="text-gray-600">Tasa de Supervivencia:</span>
                           <Badge variant="outline">{calculatedResults.survivalRate}%</Badge>
                         </div>
@@ -464,6 +583,22 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                           <span className="text-gray-600">Duración Total del Ciclo:</span>
                           <Badge variant="outline">{seedingParams.nurseryDuration + seedingParams.growoutDuration} semanas</Badge>
                         </div>
+                      </div>
+
+                      {/* Botón para aplicar al gantt */}
+                      <div className="pt-4 border-t mt-4">
+                        <Button
+                          onClick={applyPlanToGantt}
+                          className="w-full bg-teal-600 hover:bg-teal-700"
+                          disabled={!onApplyPlanToGantt || !seedingParams.generation}
+                        >
+                          🗓️ Aplicar Plan al Gantt
+                        </Button>
+                        {!seedingParams.generation && (
+                          <p className="text-xs text-orange-600 text-center mt-2">
+                            Seleccione una generación para aplicar el plan
+                          </p>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -491,24 +626,24 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-gray-600">Total de Tanques:</span>
-                        <span className="font-medium">{location.numTanks}</span>
+                        <span className="font-medium">{location?.numTanks || 0}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Área Total:</span>
                         <span className="font-medium">
-                          {Object.values(location.tankSizes).reduce((sum, size) => sum + size, 0).toFixed(1)} m²
+                          {location ? Object.values(location.tankSizes).reduce((sum, size) => sum + size, 0).toFixed(1) : 0} m²
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Capacidad Larvaria:</span>
                         <span className="font-medium">
-                          {(Object.values(location.tankSizes).reduce((sum, size) => sum + size, 0) * 1500).toLocaleString()}
+                          {location ? (Object.values(location.tankSizes).reduce((sum, size) => sum + size, 0) * 1500).toLocaleString() : 0}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Capacidad Juveniles:</span>
                         <span className="font-medium">
-                          {(Object.values(location.tankSizes).reduce((sum, size) => sum + size, 0) * 350).toLocaleString()}
+                          {location ? (Object.values(location.tankSizes).reduce((sum, size) => sum + size, 0) * 350).toLocaleString() : 0}
                         </span>
                       </div>
                     </div>
@@ -517,7 +652,7 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">Distribución por Tipo</h3>
                     <div className="space-y-3">
-                      {Object.values(location.tankTypes).reduce((acc: any, type: string) => {
+                      {location && Object.values(location.tankTypes).reduce((acc: any, type: string) => {
                         acc[type] = (acc[type] || 0) + 1;
                         return acc;
                       }, {}) && Object.entries(Object.values(location.tankTypes).reduce((acc: any, type: string) => {
@@ -539,7 +674,7 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
                         <strong className="text-blue-800">Optimización:</strong> Considere mantener un 10% de tanques en reserva para mantenimiento rotativo.
                       </div>
                       <div className="p-3 bg-green-50 rounded">
-                        <strong className="text-green-800">Productividad:</strong> La configuración actual permite ciclos de {Math.floor(location.numTanks / 3)} generaciones simultáneas.
+                        <strong className="text-green-800">Productividad:</strong> La configuración actual permite ciclos de {Math.floor((location?.numTanks || 0) / 3)} generaciones simultáneas.
                       </div>
                       <div className="p-3 bg-yellow-50 rounded">
                         <strong className="text-yellow-800">Planificación:</strong> Programe mantenimientos durante semanas de menor demanda.
@@ -551,6 +686,7 @@ export function Analytics({ isOpen, onClose, location, locationKey }: AnalyticsP
             </Card>
           </div>
           )}
+
         </div>
 
         <div className="flex justify-end pt-4">

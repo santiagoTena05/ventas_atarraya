@@ -1,111 +1,233 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ContainerPlannerTable } from '@/components/planner/ContainerPlannerTable';
 import { Analytics } from '@/components/planner/Analytics';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, Download, Upload } from 'lucide-react';
-
-// Datos mock para las granjas/oficinas
-const mockLocations = {
-  oficina1: {
-    id: 1,
-    name: 'Oficina Principal',
-    numTanks: 12,
-    startDate: new Date('2025-01-06'),
-    endDate: new Date('2025-12-29'),
-    data: {},
-    tankNames: {
-      1: 'Tanque P-01',
-      2: 'Tanque P-02',
-      3: 'Tanque P-03',
-      4: 'Estanque E-01',
-      5: 'Estanque E-02',
-      6: 'Estanque E-03',
-      7: 'Biofloc B-01',
-      8: 'Biofloc B-02',
-      9: 'Nursery N-01',
-      10: 'Nursery N-02',
-      11: 'Grow-out G-01',
-      12: 'Grow-out G-02'
-    },
-    tankTypes: {
-      1: 'Shrimpbox',
-      2: 'Shrimpbox',
-      3: 'Shrimpbox',
-      4: 'Blue Whale',
-      5: 'Blue Whale',
-      6: 'Blue Whale',
-      7: 'Biofloc',
-      8: 'Biofloc',
-      9: 'Nursery',
-      10: 'Nursery',
-      11: 'Pool',
-      12: 'Pool'
-    },
-    tankSizes: {
-      1: 23.5,
-      2: 23.5,
-      3: 23.5,
-      4: 45.0,
-      5: 45.0,
-      6: 45.0,
-      7: 30.0,
-      8: 30.0,
-      9: 15.0,
-      10: 15.0,
-      11: 60.0,
-      12: 60.0
-    }
-  },
-  sucursal1: {
-    id: 2,
-    name: 'Sucursal Norte',
-    numTanks: 8,
-    startDate: new Date('2025-01-06'),
-    endDate: new Date('2025-12-29'),
-    data: {},
-    tankNames: {
-      1: 'Norte T-01',
-      2: 'Norte T-02',
-      3: 'Norte T-03',
-      4: 'Norte T-04',
-      5: 'Norte E-01',
-      6: 'Norte E-02',
-      7: 'Norte G-01',
-      8: 'Norte G-02'
-    },
-    tankTypes: {
-      1: 'Shrimpbox',
-      2: 'Shrimpbox',
-      3: 'Shrimpbox',
-      4: 'Shrimpbox',
-      5: 'Blue Whale',
-      6: 'Blue Whale',
-      7: 'Pool',
-      8: 'Pool'
-    },
-    tankSizes: {
-      1: 23.5,
-      2: 23.5,
-      3: 23.5,
-      4: 23.5,
-      5: 45.0,
-      6: 45.0,
-      7: 60.0,
-      8: 60.0
-    }
-  }
-};
+import { BarChart3, Loader2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePlannerData } from '@/hooks/usePlannerData';
+import { usePlannerCrud } from '@/hooks/usePlannerCrud';
+import { useGeneraciones } from '@/hooks/useGeneraciones';
+import { useGenetics } from '@/hooks/useGenetics';
 
 export default function PlannerPage() {
-  const [currentLocation, setCurrentLocation] = useState('oficina1');
+  const { locationData, isLoading, error } = usePlannerData();
+  const {
+    planes,
+    currentPlan,
+    setCurrentPlan,
+    crearPlan,
+    crearBloque,
+    loading: plannerLoading
+  } = usePlannerCrud();
+  const { generaciones } = useGeneraciones();
+  const { genetics } = useGenetics();
+  const [currentLocation, setCurrentLocation] = useState('');
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
+  const [plannerTableKey, setPlannerTableKey] = useState(0); // Para forzar re-render
+  const [externalPlanData, setExternalPlanData] = useState<any>(null);
 
-  const currentLocationData = mockLocations[currentLocation as keyof typeof mockLocations];
+  // Estados para filtro de fechas
+  const [weeksToShow, setWeeksToShow] = useState(8); // Mostrar 8 semanas por defecto
+  const [startWeek, setStartWeek] = useState(0); // Semana inicial para mostrar
+
+  // Auto-select first location when data loads
+  useEffect(() => {
+    if (!isLoading && Object.keys(locationData).length > 0 && !currentLocation) {
+      setCurrentLocation(Object.keys(locationData)[0]);
+    }
+  }, [isLoading, locationData, currentLocation]);
+
+  // Crear plan por defecto cuando se carga la primera ubicación
+  useEffect(() => {
+    const crearPlanPorDefecto = async () => {
+      if (currentLocation && !currentPlan && planes.length === 0 && !plannerLoading) {
+        const locationInfo = locationData[currentLocation];
+        if (!locationInfo) return;
+
+        try {
+          console.log('🎯 Creando plan por defecto para:', locationInfo.name);
+
+          const nuevoPlan = await crearPlan({
+            oficina_id: locationInfo.id,
+            nombre: `Plan ${locationInfo.name} 2025`,
+            descripcion: `Plan anual de siembra para ${locationInfo.name}`,
+            fecha_inicio: locationInfo.startDate.toISOString().split('T')[0],
+            fecha_fin: locationInfo.endDate.toISOString().split('T')[0],
+            semanas_total: Math.ceil(
+              (locationInfo.endDate.getTime() - locationInfo.startDate.getTime()) / (1000 * 60 * 60 * 24 * 7)
+            ),
+            activo: true
+          });
+
+          if (nuevoPlan) {
+            setCurrentPlan(nuevoPlan);
+            console.log('✅ Plan por defecto creado:', nuevoPlan.nombre);
+          }
+        } catch (error) {
+          console.error('❌ Error creando plan por defecto:', error);
+        }
+      }
+    };
+
+    crearPlanPorDefecto();
+  }, [currentLocation, locationData, currentPlan, planes, plannerLoading, crearPlan, setCurrentPlan]);
+
+  // Seleccionar automáticamente el primer plan si no hay uno seleccionado
+  useEffect(() => {
+    if (!currentPlan && planes.length > 0) {
+      setCurrentPlan(planes[0]);
+    }
+  }, [currentPlan, planes, setCurrentPlan]);
+
+  const currentLocationData = locationData[currentLocation];
   const tankCount = currentLocationData?.numTanks || 0;
+
+  // Función para aplicar plan de siembra al gantt
+  const handleApplyPlanToGantt = async (planData: any) => {
+    console.log('📋 Aplicando plan de siembra al gantt:', planData);
+
+    // Actualizar el estado con los nuevos datos
+    setExternalPlanData(planData);
+
+    // Forzar re-render del componente tabla
+    setPlannerTableKey(prev => prev + 1);
+
+    // Convertir tableData a bloques en Supabase
+    if (currentPlan?.id && planData.ganttData) {
+      await saveGanttDataToSupabase(planData.ganttData);
+    }
+
+    // Mostrar confirmación al usuario
+    alert(`Plan aplicado exitosamente!\n\nGeneración: ${planData.planDetails.generation}\nGenética: ${planData.planDetails.genetics}\nCiclo total: ${planData.planDetails.totalCycle} semanas\nCosecha esperada: ${planData.planDetails.expectedHarvest} kg`);
+  };
+
+  // Función para convertir ganttData a bloques en Supabase
+  const saveGanttDataToSupabase = async (ganttData: any) => {
+    if (!currentPlan?.id) return;
+
+    try {
+      console.log('💾 Guardando datos del gantt en Supabase...');
+
+      // Agrupar datos por tanque
+      const tankBlocks: Record<string, any[]> = {};
+
+      Object.entries(ganttData).forEach(([key, value]: [string, any]) => {
+        if (key.includes('-generation') || key.includes('-genetics') || key.includes('-duration')) return;
+
+        const match = key.match(/tank-(\d+)-week-(\d+)/);
+        if (match) {
+          const tankId = parseInt(match[1]);
+          const week = parseInt(match[2]);
+
+          if (!tankBlocks[tankId]) tankBlocks[tankId] = [];
+
+          const generation = ganttData[`${key}-generation`];
+          const genetics = ganttData[`${key}-genetics`];
+          const duration = ganttData[`${key}-duration`];
+
+          tankBlocks[tankId].push({
+            week,
+            state: value,
+            generation,
+            genetics,
+            duration: parseInt(duration) || 1
+          });
+        }
+      });
+
+      // Crear bloques continuos por tanque
+      for (const [tankId, weekData] of Object.entries(tankBlocks)) {
+        weekData.sort((a, b) => a.week - b.week);
+
+        let i = 0;
+        while (i < weekData.length) {
+          const startWeek = weekData[i];
+          let endWeekIndex = i;
+
+          // Encontrar el final del bloque continuo
+          while (
+            endWeekIndex + 1 < weekData.length &&
+            weekData[endWeekIndex + 1].week === weekData[endWeekIndex].week + 1 &&
+            weekData[endWeekIndex + 1].state === startWeek.state &&
+            weekData[endWeekIndex + 1].generation === startWeek.generation
+          ) {
+            endWeekIndex++;
+          }
+
+          const duration = endWeekIndex - i + 1;
+
+          // Buscar IDs de generación y genética
+          const generacionSeleccionada = generaciones.find(g => g.codigo === startWeek.generation);
+          const geneticaSeleccionada = genetics.find(g => g.id === parseInt(startWeek.genetics));
+
+          // Crear bloque en Supabase
+          await crearBloque({
+            plan_id: currentPlan.id,
+            estanque_id: parseInt(tankId),
+            semana_inicio: startWeek.week,
+            duracion: duration,
+            estado: startWeek.state,
+            generacion_id: generacionSeleccionada?.id || null,
+            genetica_id: geneticaSeleccionada?.id || null,
+            observaciones: `Generado desde Analytics - ${startWeek.state}`
+          });
+
+          i = endWeekIndex + 1;
+        }
+      }
+
+      console.log('✅ Datos del gantt guardados exitosamente en Supabase');
+    } catch (error) {
+      console.error('❌ Error guardando datos del gantt:', error);
+    }
+  };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-6 py-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-teal-600" />
+            <p className="text-gray-600">Cargando datos del planner...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="container mx-auto px-6 py-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <p className="text-red-600 mb-4">Error: {error}</p>
+            <Button onClick={() => window.location.reload()}>
+              Reintentar
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show empty state if no data
+  if (Object.keys(locationData).length === 0) {
+    return (
+      <div className="container mx-auto px-6 py-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">No se encontraron oficinas o estanques activos</p>
+            <p className="text-sm text-gray-500">Verifica que tengas oficinas y estanques configurados en el sistema</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-6 py-6">
@@ -147,7 +269,7 @@ export default function PlannerPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(mockLocations).map(([key, location]) => (
+                  {Object.entries(locationData).map(([key, location]) => (
                     <SelectItem key={key} value={key}>
                       {location.name}
                     </SelectItem>
@@ -156,9 +278,53 @@ export default function PlannerPage() {
               </Select>
             </div>
 
+            {/* Date Range Filter */}
+            <div className="flex items-center gap-2 border-l pl-4">
+              <Calendar className="h-4 w-4 text-gray-500" />
+              <label className="text-sm font-medium text-gray-700">Vista:</label>
+              <Select value={weeksToShow.toString()} onValueChange={(value) => setWeeksToShow(parseInt(value))}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="4">4 semanas</SelectItem>
+                  <SelectItem value="8">8 semanas</SelectItem>
+                  <SelectItem value="12">12 semanas</SelectItem>
+                  <SelectItem value="16">16 semanas</SelectItem>
+                  <SelectItem value="24">24 semanas</SelectItem>
+                  <SelectItem value="52">Todo el año</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Week Navigation */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStartWeek(Math.max(0, startWeek - weeksToShow))}
+                disabled={startWeek === 0}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Anterior
+              </Button>
+              <span className="text-sm text-gray-600 px-2">
+                Semanas {startWeek + 1} - {Math.min(startWeek + weeksToShow, 52)}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStartWeek(Math.min(52 - weeksToShow, startWeek + weeksToShow))}
+                disabled={startWeek + weeksToShow >= 52}
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
             {/* Location Info */}
             {currentLocationData && (
-              <div className="flex items-center gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-4 text-sm text-gray-600 border-l pl-4">
                 <span className="flex items-center gap-1">
                   <strong>{tankCount}</strong> tanques
                 </span>
@@ -168,17 +334,6 @@ export default function PlannerPage() {
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2 ml-auto">
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Upload className="h-4 w-4" />
-                Importar
-              </Button>
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Exportar
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -193,8 +348,12 @@ export default function PlannerPage() {
           </CardHeader>
           <CardContent>
             <ContainerPlannerTable
+              key={plannerTableKey}
               location={currentLocationData}
               locationKey={currentLocation}
+              externalPlanData={externalPlanData}
+              currentPlanId={currentPlan?.id}
+              weekFilter={{ startWeek, weeksToShow }}
             />
           </CardContent>
         </Card>
@@ -204,8 +363,9 @@ export default function PlannerPage() {
       <Analytics
         isOpen={isAnalyticsOpen}
         onClose={() => setIsAnalyticsOpen(false)}
-        location={currentLocationData}
+        location={currentLocationData || null}
         locationKey={currentLocation}
+        onApplyPlanToGantt={handleApplyPlanToGantt}
       />
     </div>
   );

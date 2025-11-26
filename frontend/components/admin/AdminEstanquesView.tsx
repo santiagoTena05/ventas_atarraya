@@ -32,6 +32,7 @@ import {
   Package,
   Droplets
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 interface Estanque {
   id: number;
@@ -450,14 +451,28 @@ export function AdminEstanquesView() {
                           </Select>
                         </div>
                       </div>
-                      <div>
-                        <Label>Notas</Label>
-                        <Textarea
-                          value={editForm.notas}
-                          onChange={(e) => setEditForm({...editForm, notas: e.target.value})}
-                          placeholder="Notas adicionales"
-                          rows={2}
-                        />
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Notas</Label>
+                          <Textarea
+                            value={editForm.notas}
+                            onChange={(e) => setEditForm({...editForm, notas: e.target.value})}
+                            placeholder="Notas adicionales"
+                            rows={2}
+                          />
+                        </div>
+                        <div>
+                          <Label>Estado</Label>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-sm text-gray-600">
+                              {editForm.activo ? 'Activo' : 'Inactivo'}
+                            </span>
+                            <Switch
+                              checked={editForm.activo}
+                              onCheckedChange={(checked) => setEditForm({...editForm, activo: checked})}
+                            />
+                          </div>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <Button
@@ -491,13 +506,16 @@ export function AdminEstanquesView() {
                               {estanque.codigo}
                             </Badge>
                           )}
-                          <Badge
-                            variant={estanque.activo !== false ? "default" : "secondary"}
-                            className={`cursor-pointer ${estanque.activo !== false ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400 hover:bg-gray-500'}`}
-                            onClick={() => handleToggleActivo(estanque.id)}
-                          >
-                            {estanque.activo !== false ? 'Activo' : 'Inactivo'}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600">
+                              {estanque.activo !== false ? 'Activo' : 'Inactivo'}
+                            </span>
+                            <Switch
+                              checked={estanque.activo !== false}
+                              onCheckedChange={() => handleToggleActivo(estanque.id)}
+                              disabled={isUpdating}
+                            />
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-2">
                           {estanque.area && (
@@ -613,14 +631,28 @@ export function AdminEstanquesView() {
                 </Select>
               </div>
             </div>
-            <div>
-              <Label>Notas</Label>
-              <Textarea
-                value={newEstanqueForm.notas}
-                onChange={(e) => setNewEstanqueForm({...newEstanqueForm, notas: e.target.value})}
-                placeholder="Notas adicionales sobre el estanque"
-                rows={3}
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Notas</Label>
+                <Textarea
+                  value={newEstanqueForm.notas}
+                  onChange={(e) => setNewEstanqueForm({...newEstanqueForm, notas: e.target.value})}
+                  placeholder="Notas adicionales sobre el estanque"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Estado</Label>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-sm text-gray-600">
+                    {newEstanqueForm.activo ? 'Activo' : 'Inactivo'}
+                  </span>
+                  <Switch
+                    checked={newEstanqueForm.activo}
+                    onCheckedChange={(checked) => setNewEstanqueForm({...newEstanqueForm, activo: checked})}
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
