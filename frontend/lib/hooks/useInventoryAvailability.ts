@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useEstrategiaComercialData } from '@/hooks/useEstrategiaComercialData';
+import { useSnapshotManager } from '@/hooks/useSnapshotManager';
 
 export interface InventoryAvailability {
   fecha_semana: string;
@@ -59,65 +59,116 @@ export function useInventoryAvailability() {
     loadActivePlan();
   }, []);
 
-  // Use Estrategia Comercial data for the active plan
-  const estrategiaData = useEstrategiaComercialData(
-    activePlan?.id,
-    null, // selectedLocation
-    activePlan?.oficina_id,
-    undefined // versionId - will use latest
-  );
+  // Use snapshot manager for the active plan
+  const snapshotManager = useSnapshotManager(activePlan?.id);
 
-  // Convert Estrategia Comercial data to inventory availability format
+  // Load inventory data from snapshots
   useEffect(() => {
-    if (!estrategiaData || !activePlan) {
+    if (!activePlan) {
       return;
     }
 
-    if (estrategiaData.isLoading) {
+    const loadInventoryData = async () => {
       setLoading(true);
-      return;
-    }
+      setError(null);
 
-    setLoading(false);
+      try {
+        console.log('📊 Loading inventory from snapshots for plan:', activePlan.nombre);
 
-    // For now, let's create mock data based on what we see in Estrategia Comercial
-    // This is a temporary solution until we can properly access the proyecciones data
-    console.log('🔄 Creating mock inventory data for testing...');
+        // Get projected inventory snapshots
+        const { data: snapshots, error: snapshotsError } = await supabase
+          .from('projected_inventory_snapshots')
+          .select('*')
+          .eq('plan_id', activePlan.id)
+          .gte('fecha_semana', new Date().toISOString().split('T')[0]) // Only future weeks
+          .order('fecha_semana', { ascending: true });
 
-    const mockInventory: InventoryAvailability[] = [
-      {
-        fecha_semana: '2026-02-17',
-        talla_comercial: '61-70',
-        inventario_base: 362,
-        ventas_registradas: 0,
-        inventario_disponible: 362,
-        plan_id: activePlan.id,
-        plan_nombre: activePlan.nombre
-      },
-      {
-        fecha_semana: '2026-02-17',
-        talla_comercial: '51-60',
-        inventario_base: 104,
-        ventas_registradas: 0,
-        inventario_disponible: 104,
-        plan_id: activePlan.id,
-        plan_nombre: activePlan.nombre
-      },
-      {
-        fecha_semana: '2026-02-17',
-        talla_comercial: '41-50',
-        inventario_base: 52,
-        ventas_registradas: 0,
-        inventario_disponible: 52,
-        plan_id: activePlan.id,
-        plan_nombre: activePlan.nombre
+        if (snapshotsError) throw snapshotsError;
+
+        console.log('📈 Found snapshots:', snapshots?.length || 0);
+
+        if (!snapshots || snapshots.length === 0) {
+          console.log('⚠️ No snapshots found, triggering generation...');
+
+          if (snapshotManager.isReady) {
+            await snapshotManager.generateSnapshots(false);
+
+            // Reload snapshots after generation
+            const { data: newSnapshots, error: newSnapshotsError } = await supabase
+              .from('projected_inventory_snapshots')
+              .select('*')
+              .eq('plan_id', activePlan.id)
+              .gte('fecha_semana', new Date().toISOString().split('T')[0])
+              .order('fecha_semana', { ascending: true });
+
+            if (newSnapshotsError) throw newSnapshotsError;
+
+            console.log('✅ Generated snapshots:', newSnapshots?.length || 0);
+            processSnapshots(newSnapshots || []);
+          } else {
+            setInventoryData([]);
+          }
+        } else {
+          processSnapshots(snapshots);
+        }
+
+      } catch (err) {
+        console.error('Error loading inventory:', err);
+        setError(err instanceof Error ? err.message : 'Error loading inventory');
+        setInventoryData([]);
+      } finally {
+        setLoading(false);
       }
-    ];
+    };
 
-    console.log('✅ Mock inventory data created:', mockInventory.length, 'available options');
-    setInventoryData(mockInventory);
+    const processSnapshots = (snapshots: any[]) => {
+      // Get current registered sales to calculate available inventory
+      const loadSalesAndProcess = async () => {
+        try {
+          // Get registered orders/sales that reduce inventory
+          const { data: orders } = await supabase
+            .from('pedidos')
+            .select('fecha_entrega, talla_comercial, cantidad, estado')
+            .eq('plan_id', activePlan.id)
+            .in('estado', ['confirmado', 'en_preparacion', 'enviado']);
 
-  }, [activePlan?.id, estrategiaData?.isLoading]); // Fixed dependencies to prevent infinite loop
+          // Group sales by week and size
+          const salesByWeekSize: { [key: string]: number } = {};
+          orders?.forEach(order => {
+            const key = `${order.fecha_entrega}_${order.talla_comercial}`;
+            salesByWeekSize[key] = (salesByWeekSize[key] || 0) + order.cantidad;
+          });
+
+          // Convert snapshots to inventory availability format
+          const inventory: InventoryAvailability[] = snapshots.map(snapshot => {
+            const salesKey = `${snapshot.fecha_semana}_${snapshot.talla_comercial}`;
+            const salesRegistered = salesByWeekSize[salesKey] || 0;
+
+            return {
+              fecha_semana: snapshot.fecha_semana,
+              talla_comercial: snapshot.talla_comercial,
+              inventario_base: snapshot.inventario_total_kg,
+              ventas_registradas: salesRegistered,
+              inventario_disponible: Math.max(0, snapshot.inventario_total_kg - salesRegistered),
+              plan_id: activePlan.id,
+              plan_nombre: activePlan.nombre
+            };
+          });
+
+          console.log('✅ Processed inventory data:', inventory.length, 'entries');
+          setInventoryData(inventory);
+
+        } catch (err) {
+          console.error('Error processing snapshots:', err);
+          setError(err instanceof Error ? err.message : 'Error processing inventory');
+        }
+      };
+
+      loadSalesAndProcess();
+    };
+
+    loadInventoryData();
+  }, [activePlan?.id, snapshotManager.isReady]); // Depend on snapshot manager readiness
 
   // Get availability for specific size and week
   const getAvailabilityForWeekAndSize = useCallback((fecha_semana: string, talla: string): number => {
@@ -189,10 +240,11 @@ export function useInventoryAvailability() {
 
   return {
     inventoryData,
-    loading: loading || estrategiaData?.isLoading || false,
-    error: error || estrategiaData?.error || null,
+    loading: loading || snapshotManager.state.isGenerating || false,
+    error: error || snapshotManager.state.error || null,
     getAvailabilityForWeekAndSize,
     getWeeklySummary,
-    validateOrderAvailability
+    validateOrderAvailability,
+    snapshotManager // Expose for debugging/admin purposes
   };
 }
