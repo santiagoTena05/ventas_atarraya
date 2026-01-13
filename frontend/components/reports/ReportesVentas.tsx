@@ -281,7 +281,7 @@ export function ReportesVentas({ salesHook }: ReportesVentasProps) {
               <div className="text-2xl font-bold text-orange-600">
                 {formatCurrency(ventasFiltradas.length > 0 ? ventasFiltradas.reduce((sum, venta) => sum + venta.totalOrden, 0) / ventasFiltradas.length : 0)}
               </div>
-              <div className="text-sm text-orange-800">Precio Promedio</div>
+              <div className="text-sm text-orange-800">Ticket Promedio</div>
             </div>
           </CardContent>
         </Card>

@@ -8,6 +8,7 @@ export interface Genetics {
   name: string;
   description: string | null;
   active: boolean;
+  weekly_mortality_rate: number;
   created_at: string;
   updated_at: string;
 }
@@ -42,7 +43,7 @@ export function useGenetics() {
       setGenetics(data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar genéticas');
-      console.error('Error fetching genetics:', err);
+      console.log('Error fetching genetics:', err);
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,7 @@ export function useGenetics() {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar curvas de crecimiento');
-      console.error('Error fetching growth curves:', err);
+      console.log('Error fetching growth curves:', err);
     }
   };
 
@@ -175,6 +176,19 @@ export function useGenetics() {
     return (totalMortalityPercentage / 100) / cycleDurationWeeks;
   };
 
+  // Calcular tasa de mortalidad semanal para Nursery (usando raíz cúbica)
+  const calculateNurseryWeeklyMortalityRate = (totalMortalityPercentage: number): number => {
+    const survivalRate = (100 - totalMortalityPercentage) / 100; // Convertir mortalidad a supervivencia
+    const weeklySurvivalRate = Math.pow(survivalRate, 1/3); // Raíz cúbica para 3 semanas
+    return 1 - weeklySurvivalRate; // Convertir de vuelta a mortalidad
+  };
+
+  // Obtener la mortalidad semanal de una genética específica
+  const getWeeklyMortalityRateByGenetics = (geneticsId: number): number => {
+    const genetic = genetics.find(g => g.id === geneticsId);
+    return genetic?.weekly_mortality_rate || 0.02; // Default 2% si no se encuentra
+  };
+
   return {
     genetics,
     growthCurves,
@@ -186,6 +200,8 @@ export function useGenetics() {
     calculateTotalBiomass,
     calculateBiomassProgression,
     calculateWeeklyMortalityRate,
+    calculateNurseryWeeklyMortalityRate,
+    getWeeklyMortalityRateByGenetics,
     refresh: () => {
       fetchGenetics();
       fetchGrowthCurves();

@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { PlusIcon, PencilIcon, TrashIcon, SearchIcon } from "lucide-react";
+import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, Package } from "lucide-react";
 import { PedidoForm } from "@/components/forms/PedidoForm";
 import { usePedidos, type Pedido } from "@/lib/hooks/usePedidos";
+import { useInventoryAvailability } from "@/lib/hooks/useInventoryAvailability";
 
 export function PedidosView() {
   const { pedidos, loading, addPedido, updatePedido, deletePedido } = usePedidos();
+  const { getWeeklySummary, loading: inventoryLoading } = useInventoryAvailability();
   const [showForm, setShowForm] = useState(false);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -150,6 +152,62 @@ export function PedidosView() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Resumen de Inventario Disponible */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center space-x-2">
+            <Package className="h-5 w-5 text-blue-600" />
+            <CardTitle className="text-lg text-blue-900">Inventario Disponible para Pedidos</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {inventoryLoading ? (
+            <div className="text-gray-600">Cargando inventario disponible...</div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm text-blue-700 mb-3">
+                Inventario calculado desde Estrategia Comercial (descontando ventas registradas)
+              </div>
+
+              {getWeeklySummary().slice(0, 4).map((week) => (
+                <div key={week.fecha_semana} className="bg-white rounded-lg p-3 border border-blue-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium text-gray-900">
+                      Semana del {new Date(week.fecha_semana).toLocaleDateString('es-MX')}
+                    </span>
+                    <Badge className="bg-blue-100 text-blue-800">
+                      Total: {Math.round(week.total_disponible)}kg
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {Object.entries(week.inventory_by_size)
+                      .filter(([_, data]) => data.inventario_disponible > 0)
+                      .slice(0, 4)
+                      .map(([talla, data]) => (
+                      <div key={talla} className="text-center p-2 bg-gray-50 rounded">
+                        <div className="text-xs text-gray-600">{talla}</div>
+                        <div className="font-medium text-gray-900">{Math.round(data.inventario_disponible)}kg</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {getWeeklySummary().length === 0 && (
+                <div className="text-center py-4 text-gray-500">
+                  No hay inventario disponible. Verificar Estrategia Comercial.
+                </div>
+              )}
+
+              <div className="text-xs text-gray-600 mt-2">
+                💡 Los pedidos creados aquí se compararán automáticamente con este inventario disponible
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Lista de Pedidos */}
       <div className="bg-white rounded-lg border overflow-hidden">

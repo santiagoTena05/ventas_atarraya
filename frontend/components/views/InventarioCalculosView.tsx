@@ -6,6 +6,7 @@ import { useMuestreos } from "@/lib/hooks/useMuestreos";
 import { usePoblacionesIniciales } from "@/lib/hooks/usePoblacionesIniciales";
 import { useEditLogs } from "@/lib/hooks/useEditLogs";
 import { useCosechasSemanal } from "@/lib/hooks/useCosechasSemanal";
+import { plannerEvents } from '@/lib/events/plannerEvents';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -317,6 +318,10 @@ export function InventarioCalculosView() {
       setCalculos(prev => prev.map(c =>
         c.id === calculoId ? { ...c, [field]: dbValue } : c
       ));
+
+      // 📢 Emitir evento para sincronizar el planner cuando se modifiquen cálculos
+      console.log('✅ Cálculo modificado exitosamente, emitiendo evento de sincronización...');
+      plannerEvents.syncWithCalculos();
 
       return true;
     } catch (error) {

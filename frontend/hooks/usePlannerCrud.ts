@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getPlanDates } from '@/lib/utils/planDates';
 
 export interface PlannerPlan {
   id: string;
@@ -30,6 +31,7 @@ export interface PlannerBloque {
   genetica_id?: number;
   poblacion_inicial?: number;
   densidad_inicial?: number;
+  target_weight?: number;
   observaciones?: string;
   created_at: string;
   updated_at: string;
@@ -92,6 +94,34 @@ export function usePlannerCrud() {
       setError('Error de conexión');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Actualizar fechas de un plan existente
+  const actualizarFechasPlan = async (planId: string, fechaInicio: string, fechaFin: string) => {
+    try {
+      setError(null);
+
+      const { data, error } = await supabase
+        .from('planner_planes')
+        .update({
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin
+        })
+        .eq('id', planId)
+        .select()
+        .single();
+
+      if (error) {
+        setError('Error actualizando fechas del plan');
+        return null;
+      }
+
+      await loadPlanes(); // Recargar la lista
+      return data;
+    } catch (err) {
+      setError('Error de conexión');
+      return null;
     }
   };
 
@@ -164,23 +194,69 @@ export function usePlannerCrud() {
     genetica_id?: number;
     poblacion_inicial?: number;
     densidad_inicial?: number;
+    target_weight?: number;
     observaciones?: string;
   }) => {
     try {
       setError(null);
 
-      const { data, error } = await supabase.rpc('crear_bloque_planner', {
-        p_plan_id: bloqueData.plan_id,
-        p_estanque_id: bloqueData.estanque_id,
-        p_semana_inicio: bloqueData.semana_inicio,
-        p_duracion: bloqueData.duracion,
-        p_estado: bloqueData.estado,
-        p_generacion_id: bloqueData.generacion_id || null,
-        p_genetica_id: bloqueData.genetica_id || null,
-        p_poblacion_inicial: bloqueData.poblacion_inicial || null,
-        p_densidad_inicial: bloqueData.densidad_inicial || null,
-        p_observaciones: bloqueData.observaciones || null
-      });
+      console.log('🎯 Creando bloque con target_weight:', bloqueData.target_weight);
+
+      // Calcular fecha_fin basada en semana_inicio + duracion
+      // Buscar fecha base del plan actual
+      const planActual = planes.find(p => p.id === bloqueData.plan_id);
+      if (!planActual) {
+        throw new Error('Plan no encontrado');
+      }
+
+      console.log('📅 Plan actual fecha_inicio:', planActual.fecha_inicio);
+      console.log('📅 Plan actual fecha_fin:', planActual.fecha_fin);
+
+      // 🔧 Corregir fechas si no coinciden con el año del plan actual
+      const planDates = getPlanDates();
+      const expectedStart = planDates.formattedStartDate;
+      const expectedEnd = planDates.formattedEndDate;
+
+      if (planActual.fecha_inicio !== expectedStart || planActual.fecha_fin !== expectedEnd) {
+        console.log(`⚠️ Detectado plan con fechas incorrectas (${planActual.fecha_inicio} - ${planActual.fecha_fin}), corrigiendo a ${expectedStart} - ${expectedEnd}...`);
+        const fechasCorregidas = await actualizarFechasPlan(
+          planActual.id,
+          expectedStart,
+          expectedEnd
+        );
+        if (fechasCorregidas) {
+          console.log(`✅ Fechas del plan corregidas a ${planDates.year}`);
+          planActual.fecha_inicio = expectedStart;
+          planActual.fecha_fin = expectedEnd;
+        }
+      }
+
+      const fechaInicio = new Date(planActual.fecha_inicio);
+      // semana_inicio ya viene convertido de base-0 a base-1, asi que restar 1 para calcular fecha
+      fechaInicio.setDate(fechaInicio.getDate() + ((bloqueData.semana_inicio - 1) * 7));
+
+      const fechaFin = new Date(fechaInicio);
+      fechaFin.setDate(fechaFin.getDate() + (bloqueData.duracion * 7) - 1);
+
+      const { data, error } = await supabase
+        .from('planner_bloques')
+        .insert([{
+          plan_id: bloqueData.plan_id,
+          estanque_id: bloqueData.estanque_id,
+          semana_inicio: bloqueData.semana_inicio,
+          semana_fin: bloqueData.semana_inicio + bloqueData.duracion - 1,
+          fecha_inicio: fechaInicio.toISOString().split('T')[0],
+          fecha_fin: fechaFin.toISOString().split('T')[0],
+          estado: bloqueData.estado,
+          generacion_id: bloqueData.generacion_id || null,
+          genetica_id: bloqueData.genetica_id || null,
+          poblacion_inicial: bloqueData.poblacion_inicial || null,
+          densidad_inicial: bloqueData.densidad_inicial || null,
+          target_weight: bloqueData.target_weight || null,
+          observaciones: bloqueData.observaciones || null
+        }])
+        .select()
+        .single();
 
       if (error) {
         setError('Error creando bloque');
@@ -353,7 +429,7 @@ export function usePlannerCrud() {
         }]);
     } catch (err) {
       // Log de errores silencioso - no queremos que falle la operación principal
-      console.error('Error registrando log:', err);
+      console.log('Error registrando log:', err);
     }
   };
 
@@ -373,6 +449,7 @@ export function usePlannerCrud() {
     // Funciones de planes
     loadPlanes,
     crearPlan,
+    actualizarFechasPlan,
     setCurrentPlan,
 
     // Funciones de datos del planner

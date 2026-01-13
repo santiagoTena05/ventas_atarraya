@@ -20,6 +20,8 @@ export default function PlannerPage() {
     setCurrentPlan,
     crearPlan,
     crearBloque,
+    eliminarBloque,
+    loadPlannerDataByRange,
     loading: plannerLoading
   } = usePlannerCrud();
   const { generaciones } = useGeneraciones();
@@ -28,6 +30,7 @@ export default function PlannerPage() {
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [plannerTableKey, setPlannerTableKey] = useState(0); // Para forzar re-render
   const [externalPlanData, setExternalPlanData] = useState<any>(null);
+  const [refreshTimestamp, setRefreshTimestamp] = useState(Date.now()); // Para forzar recargas
 
   // Estados para filtro de fechas
   const [weeksToShow, setWeeksToShow] = useState(8); // Mostrar 8 semanas por defecto
@@ -52,7 +55,7 @@ export default function PlannerPage() {
 
           const nuevoPlan = await crearPlan({
             oficina_id: locationInfo.id,
-            nombre: `Plan ${locationInfo.name} 2025`,
+            nombre: `Plan ${locationInfo.name} 2026`,
             descripcion: `Plan anual de siembra para ${locationInfo.name}`,
             fecha_inicio: locationInfo.startDate.toISOString().split('T')[0],
             fecha_fin: locationInfo.endDate.toISOString().split('T')[0],
@@ -89,30 +92,59 @@ export default function PlannerPage() {
   const handleApplyPlanToGantt = async (planData: any) => {
     console.log('📋 Aplicando plan de siembra al gantt:', planData);
 
-    // Actualizar el estado con los nuevos datos
-    setExternalPlanData(planData);
+    try {
+      // Convertir tableData a bloques en Supabase PRIMERO
+      if (currentPlan?.id && planData.ganttData) {
+        await saveGanttDataToSupabase(planData.ganttData, planData.planDetails?.targetWeight, planData.planDetails?.startWeek);
 
-    // Forzar re-render del componente tabla
-    setPlannerTableKey(prev => prev + 1);
+        // Limpiar datos externos y forzar recarga desde Supabase
+        console.log('🧹 Limpiando datos externos y forzando recarga...');
+        setExternalPlanData(null);
 
-    // Convertir tableData a bloques en Supabase
-    if (currentPlan?.id && planData.ganttData) {
-      await saveGanttDataToSupabase(planData.ganttData);
+        // Forzar re-render del componente tabla para que recargue desde Supabase
+        console.log('🔄 Incrementando plannerTableKey para forzar re-render...');
+        setPlannerTableKey(prev => {
+          const newKey = prev + 1;
+          console.log(`📊 plannerTableKey: ${prev} → ${newKey}`);
+          return newKey;
+        });
+
+        // También actualizar timestamp para forzar recarga de datos
+        const newTimestamp = Date.now();
+        console.log('⏰ Actualizando refreshTimestamp:', newTimestamp);
+        setRefreshTimestamp(newTimestamp);
+
+        // Mostrar confirmación al usuario solo si la operación fue exitosa
+        alert(`Plan aplicado exitosamente!\n\nGeneración: ${planData.planDetails.generation}\nGenética: ${planData.planDetails.genetics}\nCiclo total: ${planData.planDetails.totalCycle} semanas\nCosecha esperada: ${planData.planDetails.expectedHarvest} kg`);
+      }
+
+    } catch (error) {
+      console.error('❌ Error aplicando plan al gantt:', error);
+
+      // No mostrar error si fue cancelado por el usuario (la función ya maneja ese caso)
+      // Solo mostrar error si fue un error técnico real
+      if (!(error instanceof Error && error.message === 'Usuario canceló la operación')) {
+        alert('Error al aplicar el plan. Por favor, intenta nuevamente.');
+      }
     }
-
-    // Mostrar confirmación al usuario
-    alert(`Plan aplicado exitosamente!\n\nGeneración: ${planData.planDetails.generation}\nGenética: ${planData.planDetails.genetics}\nCiclo total: ${planData.planDetails.totalCycle} semanas\nCosecha esperada: ${planData.planDetails.expectedHarvest} kg`);
   };
 
   // Función para convertir ganttData a bloques en Supabase
-  const saveGanttDataToSupabase = async (ganttData: any) => {
+  const saveGanttDataToSupabase = async (ganttData: any, targetWeight?: number, startWeek?: number) => {
     if (!currentPlan?.id) return;
 
     try {
       console.log('💾 Guardando datos del gantt en Supabase...');
+      console.log('🎯 Target weight recibido:', targetWeight);
+      console.log('📅 Semana inicio recibida:', startWeek);
+
+      // La semana de inicio ya se maneja en el seedingOptimizer y está en el ganttData
+      // No necesitamos hacer nada especial con la semana aquí
 
       // Agrupar datos por tanque
       const tankBlocks: Record<string, any[]> = {};
+
+      console.log('🔍 Datos del gantt recibidos:', Object.keys(ganttData));
 
       Object.entries(ganttData).forEach(([key, value]: [string, any]) => {
         if (key.includes('-generation') || key.includes('-genetics') || key.includes('-duration')) return;
@@ -138,7 +170,105 @@ export default function PlannerPage() {
         }
       });
 
-      // Crear bloques continuos por tanque
+      console.log('📋 Bloques agrupados por tanque:', tankBlocks);
+
+      // Obtener datos existentes del plan para verificar conflictos
+      const planStartDate = new Date(currentPlan.fecha_inicio);
+      const planEndDate = new Date(currentPlan.fecha_fin);
+
+      const existingData = await loadPlannerDataByRange(
+        currentPlan.id,
+        currentPlan.fecha_inicio,
+        currentPlan.fecha_fin,
+        Object.keys(tankBlocks).map(id => parseInt(id))
+      );
+
+      console.log('📊 Verificando datos existentes...', {
+        affectedTanks: Object.keys(tankBlocks),
+        existingBlocks: existingData.length
+      });
+
+      // Detectar conflictos antes de crear nuevos bloques
+      const conflicts: Array<{
+        tankId: number;
+        semanaInicio: number;
+        semanaFin: number;
+        estadoExistente: string;
+        generacionExistente?: string;
+      }> = [];
+
+      for (const [tankId, weekData] of Object.entries(tankBlocks)) {
+        const numTankId = parseInt(tankId);
+        weekData.sort((a, b) => a.week - b.week);
+
+        // Verificar cada semana del nuevo plan contra datos existentes
+        for (const weekInfo of weekData) {
+          const conflictingBlock = existingData.find(block =>
+            block.estanque_id === numTankId &&
+            weekInfo.week >= block.semana_inicio &&
+            weekInfo.week <= block.semana_fin &&
+            block.estado !== 'Ready' // Solo considerar conflicto si no está Ready
+          );
+
+          if (conflictingBlock && !conflicts.find(c =>
+            c.tankId === numTankId &&
+            c.semanaInicio === conflictingBlock.semana_inicio &&
+            c.semanaFin === conflictingBlock.semana_fin
+          )) {
+            conflicts.push({
+              tankId: numTankId,
+              semanaInicio: conflictingBlock.semana_inicio,
+              semanaFin: conflictingBlock.semana_fin,
+              estadoExistente: conflictingBlock.estado,
+              generacionExistente: conflictingBlock.generacion_id || undefined
+            });
+          }
+        }
+      }
+
+      // Si hay conflictos, mostrar advertencia y pedir confirmación
+      if (conflicts.length > 0) {
+        const conflictDetails = conflicts.map(c =>
+          `Tanque ${c.tankId}: Semanas ${c.semanaInicio}-${c.semanaFin} (${c.estadoExistente}${c.generacionExistente ? ` - Gen ${c.generacionExistente}` : ''})`
+        ).join('\n');
+
+        const userConfirmed = confirm(
+          `⚠️ ADVERTENCIA: Se detectaron conflictos con datos existentes:\n\n${conflictDetails}\n\n` +
+          `¿Desea continuar y sobrescribir estos datos existentes?\n\n` +
+          `• SÍ: Eliminará los bloques existentes y creará los nuevos\n` +
+          `• NO: Cancelará la operación y preservará los datos actuales`
+        );
+
+        if (!userConfirmed) {
+          console.log('❌ Usuario canceló la operación para preservar datos existentes');
+          alert('Operación cancelada. Los datos existentes se han preservado.');
+          return;
+        }
+
+        // Usuario confirmó sobrescribir - eliminar bloques conflictivos
+        console.log('🗑️ Eliminando bloques conflictivos...');
+        for (const conflict of conflicts) {
+          const blocksToDelete = existingData.filter(block =>
+            block.estanque_id === conflict.tankId &&
+            block.semana_inicio === conflict.semanaInicio &&
+            block.semana_fin === conflict.semanaFin
+          );
+
+          for (const blockToDelete of blocksToDelete) {
+            if (blockToDelete.tipo === 'bloque') {
+              await eliminarBloque(blockToDelete.id);
+              console.log(`🗑️ Eliminado bloque conflictivo: Tanque ${blockToDelete.estanque_id}, Semanas ${blockToDelete.semana_inicio}-${blockToDelete.semana_fin}`);
+            }
+          }
+        }
+      }
+
+      // Refrescar generaciones para asegurar que las nuevas estén disponibles
+      console.log('🔄 Refrescando generaciones antes de crear bloques...');
+      // Recargar la lista de generaciones más reciente desde el hook
+      // (esto es necesario para capturar generaciones recién creadas)
+
+      // Crear nuevos bloques continuos por tanque
       for (const [tankId, weekData] of Object.entries(tankBlocks)) {
         weekData.sort((a, b) => a.week - b.week);
 
@@ -160,11 +290,20 @@ export default function PlannerPage() {
           const duration = endWeekIndex - i + 1;
 
           // Buscar IDs de generación y genética
+          console.log(`🔍 Buscando generación: "${startWeek.generation}" en lista de ${generaciones.length} generaciones`);
           const generacionSeleccionada = generaciones.find(g => g.codigo === startWeek.generation);
+          console.log(`🎯 Generación encontrada:`, generacionSeleccionada);
+
           const geneticaSeleccionada = genetics.find(g => g.id === parseInt(startWeek.genetics));
 
+          const targetWeightForBlock = startWeek.state === 'Growout' ? targetWeight : null;
+          console.log(`🎯 Creando bloque ${startWeek.state}: target_weight = ${targetWeightForBlock}`);
+          console.log(`📊 targetWeight original desde Analytics: ${targetWeight}`);
+          console.log(`📊 targetWeightForBlock calculado: ${targetWeightForBlock}`);
+
           // Crear bloque en Supabase
-          await crearBloque({
+          // ganttData ya viene en base-1, usar directamente
+          const bloqueCreado = await crearBloque({
             plan_id: currentPlan.id,
             estanque_id: parseInt(tankId),
             semana_inicio: startWeek.week,
@@ -172,8 +311,13 @@ export default function PlannerPage() {
             estado: startWeek.state,
             generacion_id: generacionSeleccionada?.id || null,
             genetica_id: geneticaSeleccionada?.id || null,
-            observaciones: `Generado desde Analytics - ${startWeek.state}`
+            target_weight: targetWeightForBlock, // Solo para bloques Growout
+            observaciones: `Generado desde Analytics - ${startWeek.state}${targetWeight ? ` (objetivo: ${targetWeight}g)` : ''}`
           });
+
+          console.log(`✅ Bloque creado en BD:`, bloqueCreado);
+
+          console.log(`✅ Creado bloque: Tanque ${tankId}, Semanas ${startWeek.week}-${startWeek.week + duration - 1} (${startWeek.state})`);
 
           i = endWeekIndex + 1;
         }
@@ -182,6 +326,7 @@ export default function PlannerPage() {
       console.log('✅ Datos del gantt guardados exitosamente en Supabase');
     } catch (error) {
       console.error('❌ Error guardando datos del gantt:', error);
+      throw error; // Re-throw para que la función llamadora pueda manejar el error
     }
   };
 
@@ -254,7 +399,7 @@ export default function PlannerPage() {
                 className="flex items-center gap-2"
               >
                 <BarChart3 className="h-4 w-4" />
-                Analytics
+                Nueva Siembra
               </Button>
             </div>
           </div>
@@ -354,6 +499,7 @@ export default function PlannerPage() {
               externalPlanData={externalPlanData}
               currentPlanId={currentPlan?.id}
               weekFilter={{ startWeek, weeksToShow }}
+              refreshTimestamp={refreshTimestamp}
             />
           </CardContent>
         </Card>
@@ -365,6 +511,7 @@ export default function PlannerPage() {
         onClose={() => setIsAnalyticsOpen(false)}
         location={currentLocationData || null}
         locationKey={currentLocation}
+        currentPlanId={currentPlan?.id}
         onApplyPlanToGantt={handleApplyPlanToGantt}
       />
     </div>

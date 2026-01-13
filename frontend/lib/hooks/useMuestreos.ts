@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useGeneraciones } from '@/lib/hooks/useGeneraciones';
+import { plannerEvents } from '@/lib/events/plannerEvents';
 
 export interface MuestreoEstanque {
   id?: string;
@@ -243,6 +244,33 @@ export function useMuestreos() {
 
       // Recargar sesiones
       await loadSesiones();
+
+      // 📢 Emitir evento + trigger para planner usando múltiples métodos
+      console.log('✅ Muestreo guardado exitosamente, activando ajuste automático...');
+
+      // Método 1: Event system (podría fallar por timing)
+      plannerEvents.syncWithMuestreos();
+
+      // Método 2: LocalStorage trigger (más confiable)
+      localStorage.setItem('planner_sync_trigger', `${Date.now()}-muestreos`);
+
+      // Método 3: Window event (global)
+      window.dispatchEvent(new CustomEvent('plannerSync', { detail: { type: 'muestreos' } }));
+
+      // Método 4: Ejecutar ajuste automático después de confirmar guardado completo
+      setTimeout(() => {
+        console.log('🎯 Emitiendo evento para ajuste automático del planner...');
+        // Emitir evento específico para ejecutar ajuste automático
+        window.dispatchEvent(new CustomEvent('executePlannerAutoAdjustment', {
+          detail: {
+            source: 'muestreo-guardado-completo',
+            planId: '6bd19390-425e-4df2-8027-12208ceea57a',
+            timestamp: Date.now()
+          }
+        }));
+        console.log('✅ Evento de ajuste automático emitido desde muestreos');
+      }, 2000); // Esperar 2 segundos para asegurar que los datos estén en BD
+
       return true;
     } catch (error) {
       setError('Error guardando sesión');

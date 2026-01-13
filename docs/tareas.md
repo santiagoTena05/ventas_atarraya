@@ -2,21 +2,22 @@
 
 ## 1. Planner
 ### Esenciales:
-- [ ] Corrección **bug** cálculo de tallas
-- [ ] Terminar función de adaptar semanas automáticamente
-- [ ] Corregir Mortalidad nursery (no empezar en 100%, contar el final de la semana)
-- [ ] Corregir mortalidad de growout (empezar en 98%)
-- [ ] Cambiar nombre de **_analytics_** a **_nueva siembra_**
+- [x] Corrección **bug** cálculo de tallas
+- [x] Terminar función de adaptar semanas automáticamente
+    - [x] Modificar siembras a partir de los cambios automaticos
+- [x] Corregir Mortalidad nursery (no empezar en 100%, contar el final de la semana)
+- [x] Corregir mortalidad de growout (empezar en 98%)
+- [x] Cambiar nombre de **_analytics_** a **_nueva siembra_**
 - [ ] **Cosechas técnicas** (Todavía no conozco bien el scope completo)
     - [ ] Especificaciones de estanques para parámetros
 
 ### Secundarios:
-- [ ] Formato de celdas
+- [x] Formato de celdas
 
 ---
 
 ## 2. Playground
-- [ ] Tabla de registros a partir de semana actual
+- [x] Tabla de registros a partir de semana actual
 
 | Tallas (comerciales) | 01 dec 2025          | 08 dec 2025          |
 | :------------------: | :------------------: | :------------------: |
@@ -31,7 +32,7 @@
 | Fresco     | HON, HOFF, PD |                  |
 | Congelado  | HON, HOFF, PD |                  |
 
-- [ ] Indicadores de colores
+- [x] Indicadores de colores
     - 🔵 Azul: cantidad asignada a pedido <= inventario neto
     - 🟡 Amarillo: cantidad de cosecha técnica que debe ser asignada a un pedido
     - 🔴 Rojo: cantidad asignada a pedido >= inventario neto

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,11 +11,15 @@ import { Badge } from '@/components/ui/badge';
 import { BarChart3, Target, TrendingUp } from 'lucide-react';
 import { useGeneraciones } from '@/hooks/useGeneraciones';
 import { useGenetics } from '@/hooks/useGenetics';
+import { useMuestreos } from '@/lib/hooks/useMuestreos';
+import { GenerationAutocomplete } from '@/components/ui/generation-autocomplete';
 import {
   generateOptimizedSeedingPlan,
   SeedingParameters,
   Tank
 } from '@/lib/algorithms/seedingOptimizer';
+import { usePlannerCrud } from '@/hooks/usePlannerCrud';
+import { getPlanDates } from '@/lib/utils/planDates';
 
 interface LocationData {
   id: number;
@@ -33,6 +38,7 @@ interface AnalyticsProps {
   onClose: () => void;
   location: LocationData | null;
   locationKey: string;
+  currentPlanId?: string;
   onApplyPlanToGantt?: (planData: any) => void;
 }
 
@@ -58,11 +64,15 @@ const mockAnalytics = {
   }
 };
 
-export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanToGantt }: AnalyticsProps) {
-  const { getGeneracionOptions } = useGeneraciones();
-  const { genetics, loading: geneticsLoading } = useGenetics();
+export function Analytics({ isOpen, onClose, location, locationKey, currentPlanId, onApplyPlanToGantt }: AnalyticsProps) {
+  const { getGeneracionOptions, generaciones, loadGeneraciones } = useGeneraciones();
+  const { genetics, getWeightByWeek, loading: geneticsLoading } = useGenetics();
+  const { sesiones: muestreosSesiones } = useMuestreos();
+  const { loadPlannerDataByRange } = usePlannerCrud();
   const [selectedTab, setSelectedTab] = useState('utilization');
   const [selectedWeek, setSelectedWeek] = useState(0);
+  const [planningMode, setPlanningMode] = useState<'weeks' | 'weight'>('weeks');
+  const [muestreosDetalle, setMuestreosDetalle] = useState<any[]>([]);
   const [seedingParams, setSeedingParams] = useState({
     numberOfNurseries: 2,
     nurseryDensity: 1500,
@@ -70,12 +80,52 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
     mortalityPercentage: 20,
     nurseryDuration: 3,
     growoutDuration: 8,
+    targetWeight: 25 as number | string, // Nueva propiedad para talla deseada
     generation: '',
     geneticsId: 1,
-    startWeek: 0
+    startWeek: 1 // Semana de inicio seleccionada del planner (base 1)
   });
 
   const [calculatedResults, setCalculatedResults] = useState<any>(null);
+  const [customTankSelection, setCustomTankSelection] = useState<{
+    nurseryTanks: number[];
+    growoutTanks: number[];
+  } | null>(null);
+
+  // ⚠️ REMOVIDO: useEffect que causaba loops infinitos al refrescar generaciones
+
+  // Cargar muestreos_detalle que contiene los datos reales (peso, estanque_id)
+  useEffect(() => {
+    const loadMuestreosDetalle = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('muestreos_detalle')
+          .select(`
+            *,
+            muestreos_sesiones!inner (
+              id,
+              fecha,
+              generacion_id,
+              generaciones (
+                codigo,
+                nombre
+              )
+            )
+          `);
+
+        if (error) {
+          console.log('Error cargando muestreos_detalle en Analytics:', error);
+          return;
+        }
+
+        setMuestreosDetalle(data || []);
+      } catch (error) {
+        console.log('Error en Analytics:', error);
+      }
+    };
+
+    loadMuestreosDetalle();
+  }, []);
 
   // Calcular número de semanas
   const getNumWeeks = () => {
@@ -95,7 +145,7 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
       weekDate.setDate(startDate.getDate() + (i * 7));
 
       options.push({
-        value: i,
+        value: i,  // Regresar a base-0 porque el seeding optimizer espera base-0
         label: `Semana ${i + 1}`,
         date: weekDate.toLocaleDateString('es-ES', {
           month: '2-digit',
@@ -110,8 +160,99 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
 
   const weekOptions = generateWeekOptions();
 
+  // Obtener fecha por número de semana
+  const getDateByWeek = (weekNumber: number) => {
+    const startDate = location?.startDate ? new Date(location.startDate) : new Date('2025-01-06');
+    const weekDate = new Date(startDate);
+    weekDate.setDate(startDate.getDate() + (weekNumber * 7));
+    // Formato dd/mm/aa
+    const day = weekDate.getDate().toString().padStart(2, '0');
+    const month = (weekDate.getMonth() + 1).toString().padStart(2, '0');
+    const year = weekDate.getFullYear().toString().slice(-2);
+    return `${day}/${month}/${year}`;
+  };
+
+  // Obtener rango de fechas para un rango de semanas
+  const getDateRangeForWeeks = (startWeek: number, endWeek: number) => {
+    const startDateStr = getDateByWeek(startWeek);
+    const endDateStr = getDateByWeek(endWeek);
+    return `${startDateStr} - ${endDateStr}`;
+  };
+
+  // Función para verificar si hay datos reales para un tanque/generación
+  const hasRealDataForTankGeneration = (tankId: number, generationCode: string): { hasData: boolean, latestWeight?: number, weekInPlan?: number } => {
+    if (!muestreosDetalle || muestreosDetalle.length === 0) {
+      return { hasData: false };
+    }
+
+    // Buscar la generación por código para obtener su ID
+    const generacionObj = generaciones.find(g => g.codigo === generationCode);
+    if (!generacionObj) {
+      return { hasData: false };
+    }
+
+    // Buscar datos que coincidan con estanque_id y generacion_id
+    // Y que estén dentro del rango de fechas del plan actual
+    const planDates = getPlanDates();
+    const planStartDate = location?.startDate || planDates.startDate;
+    const planEndDate = location?.endDate || planDates.endDate;
+
+    const matchingData = muestreosDetalle.filter(detalle => {
+      const muestreoDate = new Date(detalle.muestreos_sesiones.fecha);
+      const dateInRange = muestreoDate >= planStartDate && muestreoDate <= planEndDate;
+
+      return detalle.estanque_id === tankId &&
+        detalle.muestreos_sesiones.generacion_id === generacionObj.id &&
+        dateInRange;
+    });
+
+    if (matchingData.length === 0) {
+      return { hasData: false };
+    }
+
+    // Encontrar el dato más reciente
+    const latestData = matchingData.sort((a, b) =>
+      new Date(b.muestreos_sesiones.fecha).getTime() - new Date(a.muestreos_sesiones.fecha).getTime()
+    )[0];
+
+    // Calcular en qué semana del plan está ese muestreo
+    const muestreoDate = new Date(latestData.muestreos_sesiones.fecha);
+    const weeksDiff = Math.floor((muestreoDate.getTime() - planStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+    return {
+      hasData: true,
+      latestWeight: latestData.average_size,
+      weekInPlan: weeksDiff,
+      fecha: latestData.muestreos_sesiones.fecha
+    };
+  };
+
+  // Función para encontrar la semana necesaria para alcanzar una talla objetivo
+  const findWeekForTargetWeight = (geneticsId: number, targetWeight: number): number => {
+    // Buscar iterativamente desde semana 0 hasta que encuentre el peso objetivo
+    for (let week = 0; week <= 52; week++) {
+      const currentWeight = getWeightByWeek(geneticsId, week);
+
+      if (currentWeight >= targetWeight) {
+        return week;
+      }
+    }
+    // Si no encuentra el peso en 52 semanas, devolver 52
+    return 52;
+  };
+
+  // Función para calcular automáticamente la duración de growout basada en talla
+  const calculateGrowoutDurationByWeight = () => {
+    if (planningMode === 'weight' && typeof seedingParams.targetWeight === 'number' && seedingParams.targetWeight > 0) {
+      const totalWeeksNeeded = findWeekForTargetWeight(seedingParams.geneticsId, seedingParams.targetWeight);
+      const growoutDuration = Math.max(1, totalWeeksNeeded - seedingParams.nurseryDuration);
+      return growoutDuration;
+    }
+    return seedingParams.growoutDuration;
+  };
+
   // Calcular plan de siembra optimizado
-  const calculateSeedingPlan = () => {
+  const calculateSeedingPlan = async () => {
     if (!location) return;
 
     try {
@@ -123,48 +264,89 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
         area: area
       }));
 
-      // Datos existentes del gantt
-      const existingData = location.data || {};
+      console.log('🏗️ Tanques disponibles:', availableTanks);
+      const nurseryTanks = availableTanks.filter(t => t.type === 'Nursery');
+      const growoutTanks = availableTanks.filter(t => t.type === 'Growout');
+      console.log('🍼 Tanques Nursery encontrados:', nurseryTanks.length, nurseryTanks.map(t => `${t.id}(${t.name})`));
+      console.log('🦐 Tanques Growout encontrados:', growoutTanks.length, growoutTanks.map(t => `${t.id}(${t.name})`));
 
-      // Buscar la semana más temprana disponible
-      let optimalStartWeek = seedingParams.startWeek;
-      const numWeeks = getNumWeeks();
+      // Cargar datos existentes actuales desde Supabase
+      let existingData: Record<string, any> = {};
 
-      // Buscar desde la semana actual hacia adelante para encontrar el slot más próximo
-      for (let week = 0; week < numWeeks - (seedingParams.nurseryDuration + seedingParams.growoutDuration); week++) {
-        const parameters: SeedingParameters = {
-          ...seedingParams,
-          startWeek: week
-        };
+      if (currentPlanId) {
+        console.log('🔄 Cargando datos actuales desde Supabase para cálculo de siembra...');
+        // Usar el rango de fechas del planner basado en la semana seleccionada
+        const fechaInicio = location.startDate.toISOString().split('T')[0];
+        const fechaFin = location.endDate.toISOString().split('T')[0];
+        const tankIds = Object.keys(location.tankNames).map(id => parseInt(id));
 
-        const testResult = generateOptimizedSeedingPlan(
-          parameters,
-          availableTanks,
-          existingData,
-          numWeeks
-        );
+        const data = await loadPlannerDataByRange(currentPlanId, fechaInicio, fechaFin, tankIds);
 
-        if (testResult.success) {
-          optimalStartWeek = week;
-          break;
-        }
+        // Convertir datos de Supabase a formato de tableData
+        data.forEach(item => {
+          if (item.tipo === 'bloque') {
+            for (let semana = item.semana_inicio; semana <= item.semana_fin; semana++) {
+              const cellKey = `tank-${item.estanque_id}-week-${semana}`;
+              existingData[cellKey] = item.estado;
+
+              if (item.generacion_id) {
+                const generacion = generaciones.find(g => g.id === item.generacion_id);
+                if (generacion) {
+                  existingData[`${cellKey}-generation`] = generacion.codigo;
+                }
+              }
+
+              if (item.genetica_id) {
+                const genetica = genetics.find(g => g.id === item.genetica_id);
+                if (genetica) {
+                  existingData[`${cellKey}-genetics`] = genetica.id.toString();
+                }
+              }
+
+              const duracion = item.semana_fin - item.semana_inicio + 1;
+              existingData[`${cellKey}-duration`] = duracion.toString();
+            }
+          }
+        });
+
+        console.log('📊 Datos existentes cargados:', Object.keys(existingData).length, 'entradas');
+        console.log('🔍 Muestra de datos existentes:', Object.fromEntries(
+          Object.entries(existingData).slice(0, 10)
+        ));
+      } else {
+        console.log('⚠️ No hay plan actual, usando datos de location...');
+        existingData = { ...(location.data || {}) };
       }
 
-      // Generar plan con la semana óptima encontrada
+      // Calcular duración de growout (automática si es por peso, manual si es por semanas)
+      const actualGrowoutDuration = calculateGrowoutDurationByWeight();
+
+      // Usar la semana seleccionada por el usuario exactamente
+      console.log('📅 Semana inicio recibida desde seedingParams:', seedingParams.startWeek);
+      console.log('📅 seedingParams completo:', seedingParams);
+      const numWeeks = getNumWeeks();
+
+      // Generar plan con la semana exacta seleccionada por el usuario
       const parameters: SeedingParameters = {
         ...seedingParams,
-        startWeek: optimalStartWeek
+        growoutDuration: actualGrowoutDuration, // Usar duración calculada
+        startWeek: seedingParams.startWeek
       };
 
       const result = generateOptimizedSeedingPlan(
         parameters,
         availableTanks,
         existingData,
-        numWeeks
+        numWeeks,
+        getWeightByWeek,
+        hasRealDataForTankGeneration
       );
 
       if (result.success && result.plan) {
         const { plan } = result;
+
+        // Usar la semana seleccionada por el usuario
+        const realNurseryStartWeek = seedingParams.startWeek;
 
         const results = {
           totalLarvae: plan.summary.totalLarvae,
@@ -175,7 +357,10 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
           survivalRate: plan.summary.survivalRate.toFixed(1),
           nurseryTanks: plan.nurseryTanks.length,
           requiredGrowoutTanks: plan.growoutTanks.length,
-          optimalStartWeek,
+          optimalStartWeek: realNurseryStartWeek, // Usar semana real del nursery
+          actualGrowoutDuration, // Agregar duración calculada
+          targetWeight: seedingParams.targetWeight, // Agregar talla objetivo
+          planningMode, // Agregar modo de planificación
           optimizedPlan: plan
         };
 
@@ -185,9 +370,170 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
         setCalculatedResults(null);
       }
     } catch (error) {
-      console.error('Error calculating seeding plan:', error);
+      console.log('Error calculating seeding plan:', error);
       alert('Error al calcular el plan de siembra');
       setCalculatedResults(null);
+    }
+  };
+
+  // Manejar cambio de tanque por parte del usuario
+  const handleTankChange = (type: 'nursery' | 'growout', index: number, newTankId: number) => {
+    if (!calculatedResults?.optimizedPlan) return;
+
+    console.log(`🔄 Usuario cambió ${type} ${index} a tanque ${newTankId}`);
+
+    // Actualizar selección personalizada
+    const currentSelection = customTankSelection || {
+      nurseryTanks: calculatedResults.optimizedPlan.nurseryTanks.map(t => t.tankId),
+      growoutTanks: calculatedResults.optimizedPlan.growoutTanks.map(t => t.tankId)
+    };
+
+    const newSelection = { ...currentSelection };
+
+    if (type === 'nursery') {
+      newSelection.nurseryTanks[index] = newTankId;
+    } else {
+      newSelection.growoutTanks[index] = newTankId;
+    }
+
+    setCustomTankSelection(newSelection);
+
+    // Recalcular automáticamente con la nueva selección
+    recalculateWithCustomTanks(newSelection);
+  };
+
+  // Recalcular plan con tanques personalizados
+  const recalculateWithCustomTanks = async (tankSelection: { nurseryTanks: number[]; growoutTanks: number[] }) => {
+    if (!location || !calculatedResults?.optimizedPlan) return;
+
+    try {
+      console.log('🔄 Recalculando plan con tanques personalizados...', tankSelection);
+
+      // Simular tanques disponibles
+      const availableTanks: Tank[] = Object.entries(location.tankSizes).map(([id, area]) => ({
+        id: parseInt(id),
+        name: location.tankNames[parseInt(id)] || `Tanque ${id}`,
+        type: location.tankTypes[parseInt(id)] || 'General',
+        area: area
+      }));
+
+      // Cargar datos existentes (igual que en calculateSeedingPlan)
+      let existingData: Record<string, any> = {};
+
+      if (currentPlanId) {
+        // Usar el rango de fechas del planner
+        const fechaInicio = location.startDate.toISOString().split('T')[0];
+        const fechaFin = location.endDate.toISOString().split('T')[0];
+        const tankIds = Object.keys(location.tankNames).map(id => parseInt(id));
+
+        const data = await loadPlannerDataByRange(currentPlanId, fechaInicio, fechaFin, tankIds);
+
+        data.forEach(item => {
+          if (item.tipo === 'bloque') {
+            for (let semana = item.semana_inicio; semana <= item.semana_fin; semana++) {
+              const cellKey = `tank-${item.estanque_id}-week-${semana}`;
+              existingData[cellKey] = item.estado;
+
+              if (item.generacion_id) {
+                const generacion = generaciones.find(g => g.id === item.generacion_id);
+                if (generacion) {
+                  existingData[`${cellKey}-generation`] = generacion.codigo;
+                }
+              }
+
+              if (item.genetica_id) {
+                const genetica = genetics.find(g => g.id === item.genetica_id);
+                if (genetica) {
+                  existingData[`${cellKey}-genetics`] = genetica.id.toString();
+                }
+              }
+
+              const duracion = item.semana_fin - item.semana_inicio + 1;
+              existingData[`${cellKey}-duration`] = duracion.toString();
+            }
+          }
+        });
+      } else {
+        existingData = { ...(location.data || {}) };
+      }
+
+      // Crear plan personalizado usando los tanques seleccionados
+      const originalPlan = calculatedResults.optimizedPlan;
+
+      // TODO: Implementar lógica de recalculación con tanques específicos
+      // Por ahora, actualizar los resultados con los nuevos tanques seleccionados
+
+      const updatedPlan = { ...originalPlan };
+
+      // Actualizar nursery tanks si cambiaron
+      updatedPlan.nurseryTanks = tankSelection.nurseryTanks.map((tankId, index) => {
+        const tank = availableTanks.find(t => t.id === tankId);
+        const originalTank = originalPlan.nurseryTanks[index];
+
+        return tank ? {
+          tankId: tank.id,
+          name: tank.name,
+          area: tank.area,
+          larvaeCapacity: tank.area * seedingParams.nurseryDensity,
+          startWeek: originalTank.startWeek,
+          endWeek: originalTank.endWeek
+        } : originalTank;
+      });
+
+      // Actualizar growout tanks si cambiaron
+      updatedPlan.growoutTanks = tankSelection.growoutTanks.map((tankId, index) => {
+        const tank = availableTanks.find(t => t.id === tankId);
+        const originalTank = originalPlan.growoutTanks[index];
+
+        return tank ? {
+          tankId: tank.id,
+          name: tank.name,
+          area: tank.area,
+          assignedShrimp: originalTank.assignedShrimp,
+          startWeek: originalTank.startWeek,
+          endWeek: originalTank.endWeek,
+          utilization: (originalTank.assignedShrimp / (tank.area * seedingParams.growoutDensity)) * 100
+        } : originalTank;
+      });
+
+      // Regenerar ganttData
+      const ganttData: Record<string, any> = {};
+
+      // Configurar celdas nursery
+      updatedPlan.nurseryTanks.forEach(nursery => {
+        for (let week = nursery.startWeek; week <= nursery.endWeek; week++) {
+          const cellKey = `tank-${nursery.tankId}-week-${week}`;
+          ganttData[cellKey] = 'Nursery';
+          ganttData[`${cellKey}-generation`] = seedingParams.generation;
+          ganttData[`${cellKey}-genetics`] = seedingParams.geneticsId.toString();
+          ganttData[`${cellKey}-duration`] = seedingParams.nurseryDuration.toString();
+        }
+      });
+
+      // Configurar celdas growout
+      updatedPlan.growoutTanks.forEach(growout => {
+        for (let week = growout.startWeek; week <= growout.endWeek; week++) {
+          const cellKey = `tank-${growout.tankId}-week-${week}`;
+          ganttData[cellKey] = 'Growout';
+          ganttData[`${cellKey}-generation`] = seedingParams.generation;
+          ganttData[`${cellKey}-genetics`] = seedingParams.geneticsId.toString();
+          ganttData[`${cellKey}-duration`] = calculateGrowoutDurationByWeight().toString();
+        }
+      });
+
+      updatedPlan.ganttData = ganttData;
+
+      // Actualizar resultados
+      setCalculatedResults({
+        ...calculatedResults,
+        optimizedPlan: updatedPlan
+      });
+
+      console.log('✅ Plan recalculado con tanques personalizados');
+
+    } catch (error) {
+      console.log('Error al recalcular con tanques personalizados:', error);
+      alert('Error al recalcular el plan con los nuevos tanques');
     }
   };
 
@@ -198,16 +544,19 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
     const { optimizedPlan } = calculatedResults;
 
     // Llamar a la función para aplicar al gantt
+    console.log('🎯 Aplicando plan con startWeek:', seedingParams.startWeek);
     onApplyPlanToGantt({
       ganttData: optimizedPlan.ganttData,
       planDetails: {
         generation: seedingParams.generation,
         genetics: genetics.find(g => g.id === seedingParams.geneticsId)?.name || 'Unknown',
-        totalCycle: seedingParams.nurseryDuration + seedingParams.growoutDuration,
+        totalCycle: seedingParams.nurseryDuration + calculatedResults.actualGrowoutDuration,
         nurseryTanks: optimizedPlan.nurseryTanks.length,
         growoutTanks: optimizedPlan.growoutTanks.length,
         expectedHarvest: calculatedResults.harvestWeight,
-        startWeek: calculatedResults.optimalStartWeek
+        startWeek: seedingParams.startWeek,  // Usar la semana seleccionada por el usuario
+        planningMode: calculatedResults.planningMode,
+        targetWeight: calculatedResults.targetWeight
       }
     });
 
@@ -408,19 +757,14 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Generación</label>
-                      <Select value={seedingParams.generation || 'none'} onValueChange={(value) => setSeedingParams({...seedingParams, generation: value === 'none' ? '' : value})}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar generación" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Ninguna</SelectItem>
-                          {getGeneracionOptions().map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <GenerationAutocomplete
+                        value={seedingParams.generation}
+                        onChange={(value) => {
+                          console.log('📝 Generación seleccionada/creada:', value);
+                          setSeedingParams({...seedingParams, generation: value});
+                        }}
+                        placeholder="Buscar o crear generación..."
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">Genética</label>
@@ -441,6 +785,35 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+
+                  {/* Selector de Semana de Inicio */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">Semana de Inicio de Siembra</label>
+                    <Select
+                      value={seedingParams.startWeek.toString()}
+                      onValueChange={(value) => {
+                        const newStartWeek = parseInt(value);
+                        console.log(`🗓️ Cambiando startWeek: ${seedingParams.startWeek} → ${newStartWeek}`);
+                        console.log(`🗓️ Dropdown value recibido: "${value}"`);
+                        setSeedingParams({...seedingParams, startWeek: newStartWeek});
+                        console.log(`🗓️ seedingParams después del cambio:`, {...seedingParams, startWeek: newStartWeek});
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {weekOptions.map((week) => (
+                          <SelectItem key={week.value} value={week.value.toString()}>
+                            {week.label} - {week.date}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Selecciona la semana del planner donde iniciará la siembra
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -476,7 +849,7 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Mortalidad (%)</label>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Mortalidad esperada del nursery (%)</label>
                       <Input
                         type="number"
                         value={seedingParams.mortalityPercentage}
@@ -484,6 +857,35 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                         min="0"
                         max="100"
                       />
+                    </div>
+                  </div>
+
+                  {/* Selector de modo de planificación */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-2 block">Modo de Planificación</label>
+                    <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setPlanningMode('weeks')}
+                        className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
+                          planningMode === 'weeks'
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Por Semanas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPlanningMode('weight')}
+                        className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
+                          planningMode === 'weight'
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Por Talla Objetivo
+                      </button>
                     </div>
                   </div>
 
@@ -498,13 +900,45 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Duración Engorde</label>
-                      <Input
-                        type="number"
-                        value={seedingParams.growoutDuration}
-                        onChange={(e) => setSeedingParams({...seedingParams, growoutDuration: parseInt(e.target.value) || 8})}
-                        placeholder="semanas"
-                      />
+                      {planningMode === 'weeks' ? (
+                        <>
+                          <label className="text-sm font-medium text-gray-700 mb-1 block">Duración Engorde</label>
+                          <Input
+                            type="number"
+                            value={seedingParams.growoutDuration}
+                            onChange={(e) => setSeedingParams({...seedingParams, growoutDuration: parseInt(e.target.value) || 8})}
+                            placeholder="semanas"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <label className="text-sm font-medium text-gray-700 mb-1 block">Talla Objetivo</label>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="0.1"
+                              value={seedingParams.targetWeight}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                // Permitir campo vacío o valores válidos
+                                if (value === '' || value === '.') {
+                                  setSeedingParams({...seedingParams, targetWeight: value});
+                                } else {
+                                  const numValue = parseFloat(value);
+                                  if (!isNaN(numValue)) {
+                                    setSeedingParams({...seedingParams, targetWeight: numValue});
+                                  }
+                                }
+                              }}
+                              placeholder="25.0"
+                            />
+                            <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-sm">g</span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Duración calculada: {calculateGrowoutDurationByWeight()} semanas
+                          </p>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -536,6 +970,7 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                           <div className="text-sm text-green-600 mb-1">Supervivencia Esperada</div>
                           <div className="text-xl font-bold text-green-800">
                             {calculatedResults.expectedSurvival.toLocaleString()}
+                            <span className="text-xs font-normal ml-1">juveniles</span>
                           </div>
                         </div>
                       </div>
@@ -576,14 +1011,129 @@ export function Analytics({ isOpen, onClose, location, locationKey, onApplyPlanT
                           <Badge className="bg-green-100 text-green-800">Semana {calculatedResults.optimalStartWeek + 1}</Badge>
                         </div>
                         <div className="flex justify-between items-center text-sm mt-2">
-                          <span className="text-gray-600">Tasa de Supervivencia:</span>
+                          <span className="text-gray-600">Tasa de Supervivencia del Nursery:</span>
                           <Badge variant="outline">{calculatedResults.survivalRate}%</Badge>
                         </div>
                         <div className="flex justify-between items-center text-sm mt-2">
                           <span className="text-gray-600">Duración Total del Ciclo:</span>
-                          <Badge variant="outline">{seedingParams.nurseryDuration + seedingParams.growoutDuration} semanas</Badge>
+                          <Badge variant="outline">{seedingParams.nurseryDuration + calculatedResults.actualGrowoutDuration} semanas</Badge>
                         </div>
+                        {calculatedResults.planningMode === 'weight' && (
+                          <div className="flex justify-between items-center text-sm mt-2">
+                            <span className="text-gray-600">Talla Objetivo:</span>
+                            <Badge variant="outline" className="bg-blue-50 text-blue-800">{calculatedResults.targetWeight}g</Badge>
+                          </div>
+                        )}
                       </div>
+
+                      {/* Sección de Selección de Tanques */}
+                      {calculatedResults.optimizedPlan?.availableAlternatives && (
+                        <div className="mt-6 pt-6 border-t">
+                          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                            🔄 Configuración de Tanques
+                          </h3>
+
+                          {/* Tanques Nursery */}
+                          <div className="mb-6">
+                            <h4 className="text-md font-medium text-gray-700 mb-3">Tanques Nursery</h4>
+                            <div className="space-y-2">
+                              {calculatedResults.optimizedPlan.nurseryTanks.map((tank, index) => (
+                                <div key={tank.tankId} className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                      <span className="text-sm font-medium text-gray-700">Nursery {index + 1}:</span>
+                                      <span className="px-2 py-1 bg-yellow-200 text-yellow-800 rounded text-sm font-medium">
+                                        {tank.name} ({tank.area}m²)
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        Semana {tank.startWeek + 1}-{tank.endWeek + 1} ({getDateRangeForWeeks(tank.startWeek, tank.endWeek)})
+                                      </span>
+                                    </div>
+                                    {calculatedResults.optimizedPlan.availableAlternatives.nurseryTanks.length > 0 && (
+                                      <Select value={tank.tankId.toString()} onValueChange={(value) => handleTankChange('nursery', index, parseInt(value))}>
+                                        <SelectTrigger className="w-32">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {/* Tanque actual */}
+                                          <SelectItem value={tank.tankId.toString()}>
+                                            {tank.name}
+                                          </SelectItem>
+                                          {/* Alternativas */}
+                                          {calculatedResults.optimizedPlan.availableAlternatives.nurseryTanks.map((alt) => (
+                                            <SelectItem key={alt.tankId} value={alt.tankId.toString()}>
+                                              {alt.name} ({alt.area}m²) - Desde semana {alt.availableFromWeek + 1} ({getDateByWeek(alt.availableFromWeek)})
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Tanques Growout */}
+                          <div className="mb-4">
+                            <h4 className="text-md font-medium text-gray-700 mb-3">Tanques Growout</h4>
+                            <div className="space-y-2">
+                              {calculatedResults.optimizedPlan.growoutTanks.map((tank, index) => {
+                                const isLowUtilization = tank.utilization < 90;
+                                const containerClasses = isLowUtilization
+                                  ? "p-3 bg-red-50 rounded-lg border border-red-200"
+                                  : "p-3 bg-blue-50 rounded-lg border border-blue-200";
+                                const tagClasses = isLowUtilization
+                                  ? "px-2 py-1 bg-red-200 text-red-800 rounded text-sm font-medium"
+                                  : "px-2 py-1 bg-blue-200 text-blue-800 rounded text-sm font-medium";
+
+                                return (
+                                  <div key={tank.tankId} className={containerClasses}>
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3">
+                                        <span className="text-sm font-medium text-gray-700">Growout {index + 1}:</span>
+                                        <span className={tagClasses}>
+                                          {tank.name} ({tank.area}m²)
+                                          {isLowUtilization && (
+                                            <span className="ml-1 text-xs">⚠️</span>
+                                          )}
+                                        </span>
+                                        <div className="flex flex-col">
+                                          <span className="text-xs text-gray-500">
+                                            Semanas {tank.startWeek + 1}-{tank.endWeek + 1} ({getDateRangeForWeeks(tank.startWeek, tank.endWeek)})
+                                          </span>
+                                          <span className={`text-xs ${isLowUtilization ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                                            {tank.assignedShrimp.toLocaleString()} camarones ({tank.utilization.toFixed(1)}%)
+                                          </span>
+                                        </div>
+                                    </div>
+                                    {calculatedResults.optimizedPlan.availableAlternatives.growoutTanks.length > 0 && (
+                                      <Select value={tank.tankId.toString()} onValueChange={(value) => handleTankChange('growout', index, parseInt(value))}>
+                                        <SelectTrigger className="w-32">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {/* Tanque actual */}
+                                          <SelectItem value={tank.tankId.toString()}>
+                                            {tank.name}
+                                          </SelectItem>
+                                          {/* Alternativas */}
+                                          {calculatedResults.optimizedPlan.availableAlternatives.growoutTanks.map((alt) => (
+                                            <SelectItem key={alt.tankId} value={alt.tankId.toString()}>
+                                              {alt.name} ({alt.area}m²) - Desde semana {alt.availableFromWeek + 1} ({getDateByWeek(alt.availableFromWeek)})
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    )}
+                                  </div>
+                                </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Botón para aplicar al gantt */}
                       <div className="pt-4 border-t mt-4">

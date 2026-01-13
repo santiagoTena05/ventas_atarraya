@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart, Droplets, Calendar } from "lucide-react";
+import { Plus, Table, BarChart3, FileText, ChevronDown, Fish, Settings, ShoppingCart, Droplets, Calendar, Gamepad2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -184,16 +184,29 @@ export function Navigation() {
             )}
 
             <Button
-              variant={pathname === '/coming-soon' ? 'default' : 'outline'}
+              variant={pathname === '/planner' ? 'default' : 'outline'}
               className={`flex items-center gap-2 ${
-                pathname === '/coming-soon'
+                pathname === '/planner'
                   ? 'bg-green-600 text-white hover:bg-green-700'
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
               }`}
-              onClick={() => router.push('/coming-soon')}
+              onClick={() => router.push('/planner')}
             >
               <Calendar className="h-4 w-4" />
               Planner
+            </Button>
+
+            <Button
+              variant={pathname === '/estrategia-comercial' ? 'default' : 'outline'}
+              className={`flex items-center gap-2 ${
+                pathname === '/estrategia-comercial'
+                  ? 'bg-purple-600 text-white hover:bg-purple-700'
+                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+              onClick={() => router.push('/estrategia-comercial')}
+            >
+              <Gamepad2 className="h-4 w-4" />
+              Estrategia Comercial
             </Button>
 
             <Button

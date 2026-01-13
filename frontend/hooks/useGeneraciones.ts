@@ -33,7 +33,7 @@ export function useGeneraciones() {
         .order('codigo');
 
       if (error) {
-        console.error('❌ Error cargando generaciones:', error);
+        console.log('❌ Error cargando generaciones:', error);
         setError('Error cargando generaciones');
         return;
       }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getPlanDates } from '@/lib/utils/planDates';
 
 interface Oficina {
   id: number;
@@ -21,6 +22,7 @@ interface Estanque {
   area?: number;
   ubicacion?: number;
   activo?: boolean;
+  tipo?: string;
   notas?: string;
   created_at: string;
   updated_at?: string;
@@ -54,7 +56,7 @@ export function usePlannerData() {
         .order('nombre');
 
       if (error) {
-        console.error('❌ Error cargando oficinas:', error);
+        console.log('❌ Error cargando oficinas:', error);
         setError('Error cargando oficinas');
         return;
       }
@@ -71,12 +73,12 @@ export function usePlannerData() {
     try {
       const { data, error } = await supabase
         .from('estanques')
-        .select('*')
+        .select('id, nombre, codigo, area, ubicacion, activo, tipo, notas, created_at, updated_at')
         .eq('activo', true)
         .order('nombre');
 
       if (error) {
-        console.error('❌ Error cargando estanques:', error);
+        console.log('❌ Error cargando estanques:', error);
         setError('Error cargando estanques');
         return;
       }
@@ -109,19 +111,8 @@ export function usePlannerData() {
         const tankId = estanque.id; // Usar el ID real del estanque
         tankNames[tankId] = estanque.nombre;
 
-        // Inferir tipo basado en el nombre/código del estanque
-        let tankType = 'Pool'; // Default
-        if (estanque.nombre.toLowerCase().includes('tanque p') || estanque.codigo?.startsWith('T-')) {
-          tankType = 'Shrimpbox';
-        } else if (estanque.nombre.toLowerCase().includes('estanque e') || estanque.codigo?.startsWith('E-')) {
-          tankType = 'Blue Whale';
-        } else if (estanque.nombre.toLowerCase().includes('biofloc') || estanque.codigo?.startsWith('B-')) {
-          tankType = 'Biofloc';
-        } else if (estanque.nombre.toLowerCase().includes('nursery') || estanque.codigo?.startsWith('N-')) {
-          tankType = 'Nursery';
-        } else if (estanque.nombre.toLowerCase().includes('grow')) {
-          tankType = 'Pool';
-        }
+        // Usar el campo tipo de la base de datos
+        const tankType = estanque.tipo || 'Growout'; // Default Growout si no está definido
 
         tankTypes[tankId] = tankType;
         tankSizes[tankId] = estanque.area || 540; // Default si no hay área definida
@@ -132,8 +123,8 @@ export function usePlannerData() {
         id: oficina.id,
         name: oficina.nombre,
         numTanks: oficinaEstanques.length,
-        startDate: new Date('2025-01-06'), // Fecha de inicio del año
-        endDate: new Date('2025-12-29'),   // Fecha de fin del año
+        startDate: getPlanDates().startDate, // Primer lunes del año del plan
+        endDate: getPlanDates().endDate,   // Último lunes del año del plan
         data: {},
         tankNames,
         tankTypes,
