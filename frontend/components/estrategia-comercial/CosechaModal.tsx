@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Edit } from 'lucide-react';
 import { CATEGORIAS_PRODUCTOS, TALLAS_COMERCIALES, type Cliente, type CosechaAsignada, type ProyeccionInventario } from '@/hooks/useEstrategiaComercialData';
 import { RegisterSaleButton } from './RegisterSaleButton';
 
@@ -32,9 +32,11 @@ interface CosechaModalProps {
   cosechasExistentes: CosechaAsignada[];
   proyeccionInventario?: ProyeccionInventario;
   onSave: (cosecha: Omit<CosechaAsignada, 'id'>) => Promise<void>;
+  onUpdate: (cosechaId: string, cosecha: Omit<CosechaAsignada, 'id'>) => Promise<void>;
   onDelete: (cosechaId: string) => Promise<void>;
   versionId?: string; // Add version ID for registration
   onRefresh?: () => void; // Add refresh callback
+  onEdit?: (cosecha: CosechaAsignada) => void; // Add edit callback
 }
 
 interface FormData {
@@ -43,6 +45,11 @@ interface FormData {
   presentacion: string;
   cantidad_kg: number;
   recurrente: boolean;
+}
+
+interface EditingData {
+  cosechaId: string;
+  formData: FormData;
 }
 
 export function CosechaModal({
@@ -54,9 +61,11 @@ export function CosechaModal({
   cosechasExistentes,
   proyeccionInventario,
   onSave,
+  onUpdate,
   onDelete,
   versionId,
-  onRefresh
+  onRefresh,
+  onEdit
 }: CosechaModalProps) {
   const [formData, setFormData] = useState<FormData>({
     cliente_id: null,
@@ -66,6 +75,7 @@ export function CosechaModal({
     recurrente: false
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingCosecha, setEditingCosecha] = useState<EditingData | null>(null);
 
   // Resetear form cuando se abre el modal
   useEffect(() => {
@@ -77,8 +87,38 @@ export function CosechaModal({
         cantidad_kg: 0,
         recurrente: false
       });
+      setEditingCosecha(null);
     }
   }, [isOpen]);
+
+  // Handle edit cosecha
+  const handleEditCosecha = (cosecha: CosechaAsignada) => {
+    const editData: FormData = {
+      cliente_id: cosecha.cliente_id,
+      categoria: cosecha.categoria,
+      presentacion: cosecha.presentacion,
+      cantidad_kg: cosecha.cantidad_kg,
+      recurrente: cosecha.recurrente
+    };
+
+    setFormData(editData);
+    setEditingCosecha({
+      cosechaId: cosecha.id!,
+      formData: editData
+    });
+  };
+
+  // Cancel editing
+  const handleCancelEdit = () => {
+    setEditingCosecha(null);
+    setFormData({
+      cliente_id: null,
+      categoria: '',
+      presentacion: '',
+      cantidad_kg: 0,
+      recurrente: false
+    });
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -108,7 +148,7 @@ export function CosechaModal({
 
     setIsSubmitting(true);
     try {
-      await onSave({
+      const cosechaData = {
         fecha,
         talla,
         cliente_id: formData.cliente_id,
@@ -116,7 +156,16 @@ export function CosechaModal({
         presentacion: formData.presentacion,
         cantidad_kg: formData.cantidad_kg,
         recurrente: formData.recurrente
-      });
+      };
+
+      if (editingCosecha) {
+        // Update existing cosecha
+        await onUpdate(editingCosecha.cosechaId, cosechaData);
+        setEditingCosecha(null);
+      } else {
+        // Create new cosecha
+        await onSave(cosechaData);
+      }
 
       // Resetear form después de guardar exitosamente
       setFormData({
@@ -267,6 +316,18 @@ export function CosechaModal({
                     />
                   )}
 
+                  {/* Edit Button */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleEditCosecha(cosecha)}
+                    className="text-blue-600 hover:text-blue-700"
+                    disabled={cosecha.is_registered} // Prevent editing registered sales
+                    title="Editar cosecha"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+
                   {/* Delete Button */}
                   <Button
                     variant="ghost"
@@ -274,6 +335,7 @@ export function CosechaModal({
                     onClick={() => cosecha.id && handleDelete(cosecha.id)}
                     className="text-red-600 hover:text-red-700"
                     disabled={cosecha.is_registered} // Prevent deleting registered sales
+                    title="Eliminar cosecha"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -283,9 +345,11 @@ export function CosechaModal({
           </div>
         )}
 
-        {/* Formulario para nueva cosecha */}
+        {/* Formulario para nueva/editar cosecha */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <h4 className="font-medium text-sm text-gray-700 border-t pt-4">Agregar nueva cosecha:</h4>
+          <h4 className="font-medium text-sm text-gray-700 border-t pt-4">
+            {editingCosecha ? 'Editar cosecha:' : 'Agregar nueva cosecha:'}
+          </h4>
 
           {/* Cliente */}
           <div className="space-y-2">
@@ -409,27 +473,38 @@ export function CosechaModal({
                 disabled={isSubmitting}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isSubmitting ? 'Guardando...' : 'Guardar'}
+                {isSubmitting ? 'Guardando...' : (editingCosecha ? 'Actualizar' : 'Guardar')}
               </Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  // Mantener el modal abierto para agregar otra cosecha
-                  setFormData({
-                    cliente_id: null,
-                    categoria: '',
-                    presentacion: '',
-                    cantidad_kg: 0,
-                    recurrente: false
-                  });
-                }}
-                disabled={isSubmitting}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Agregar nuevo
-              </Button>
+              {editingCosecha ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelEdit}
+                  disabled={isSubmitting}
+                >
+                  Cancelar edición
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    // Mantener el modal abierto para agregar otra cosecha
+                    setFormData({
+                      cliente_id: null,
+                      categoria: '',
+                      presentacion: '',
+                      cantidad_kg: 0,
+                      recurrente: false
+                    });
+                  }}
+                  disabled={isSubmitting}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar nuevo
+                </Button>
+              )}
             </div>
           </div>
         </form>

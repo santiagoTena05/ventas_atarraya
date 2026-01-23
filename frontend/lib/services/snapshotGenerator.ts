@@ -295,8 +295,7 @@ export class InventorySnapshotGenerator {
       .from('planner_bloques')
       .select(`
         *,
-        generacion:generaciones(id, codigo, ciclo_total, peso_promedio_cosecha),
-        genetica:geneticas(id, nombre, factor_crecimiento)
+        generacion:generaciones(id, codigo, nombre)
       `)
       .eq('plan_id', this.planId);
 
@@ -317,65 +316,73 @@ export class InventorySnapshotGenerator {
   private async processPlannerData(plannerBlocks: any[]): Promise<any[]> {
     const snapshots: any[] = [];
 
-    // Filter blocks that are in growout state and have harvest projections
+    // Filter blocks that are in growout state
     const growoutBlocks = plannerBlocks.filter(block =>
-      block.estado === 'Growout' && block.generacion
+      block.estado === 'Growout' || block.estado === 'growout'
     );
 
-    // For each week in the date range, calculate projected inventory
-    const dateRange = await this.getDefaultDateRange();
-    const weeks = this.getWeeksInRange(dateRange);
+    console.log(`📊 Found ${growoutBlocks.length} growout blocks`);
 
-    for (const weekStart of weeks) {
-      for (const talla of TALLAS_COMERCIALES) {
-        let totalInventory = 0;
-        const activeBlocks: any[] = [];
+    for (const block of growoutBlocks) {
+      console.log('🔍 Block data:', {
+        id: block.id,
+        estado: block.estado,
+        poblacion: block.poblacion,
+        peso_promedio: block.peso_promedio,
+        densidad: block.densidad,
+        estanque_id: block.estanque_id,
+        generacion: block.generacion?.codigo
+      });
 
-        // Check each block to see if it contributes inventory in this week
-        for (const block of growoutBlocks) {
-          const blockStartWeek = block.semana_inicio;
-          const blockEndWeek = block.semana_inicio + (block.duracion || 12) - 1;
-          const weekNumber = this.getWeekNumber(weekStart);
+      // Use the block's own data for calculations or provide defaults
+      const poblacion = block.poblacion || 1000; // Default population
+      const pesoPromedio = block.peso_promedio || 50; // Default 50g
+      const densidad = block.densidad || 1; // Default density
 
-          // If this week falls within the block's duration
-          if (weekNumber >= blockStartWeek && weekNumber <= blockEndWeek) {
-            const weeksInBlock = weekNumber - blockStartWeek + 1;
-            const estimatedWeight = this.calculatePesoPromedio(
-              block.generacion.peso_promedio_cosecha || 50,
-              weeksInBlock,
-              block.generacion.ciclo_total || 12
-            );
+      if (poblacion <= 0) {
+        console.log('⚠️ Skipping block with zero population:', block.id);
+        continue;
+      }
 
-            // Calculate biomass for this talla using area and density
-            const area = 540; // Default area - should get from estanques table
-            const biomasaBloque = (estimatedWeight / 1000) * area;
+      console.log('✅ Processing block with data:', {
+        poblacion,
+        pesoPromedio,
+        densidad,
+        generacion: block.generacion?.codigo
+      });
 
-            // Use size distribution to get inventory for this specific talla
-            const biomasaData = calcularBiomasaPorTalla(
-              biomasaBloque * 1000, // Convert to grams for the calculation
-              estimatedWeight,
-              1 // density factor
-            );
+      // Calculate biomass total for this block
+      const biomasaTotal = (poblacion * pesoPromedio) / 1000; // Convert to kg
 
-            const tallaData = biomasaData.find(item => item.talla === talla);
-            if (tallaData?.biomasa_kg > 0) {
-              totalInventory += tallaData.biomasa_kg;
-              activeBlocks.push(block);
-            }
-          }
-        }
+      // Calculate inventory for each commercial size using the existing utility
+      const biomasaData = calcularBiomasaPorTalla(
+        biomasaTotal,
+        pesoPromedio,
+        poblacion
+      );
 
-        if (totalInventory > 0) {
+      console.log('✅ Biomasa calculation result:', biomasaData);
+
+      // For each talla that has inventory
+      for (const [talla, biomasaKg] of Object.entries(biomasaData)) {
+        if (biomasaKg > 0) {
+          // Calculate the harvest week for this block
+          const fechaCosecha = this.calculateHarvestDate(block);
+
           snapshots.push({
             plan_id: this.planId,
-            estanque_id: activeBlocks[0]?.estanque_id || null,
-            fecha_semana: weekStart,
+            estanque_id: block.estanque_id,
+            fecha_semana: this.alignToWeekStart(fechaCosecha),
             talla_comercial: talla,
-            inventario_total_kg: totalInventory,
-            source_block_id: activeBlocks.map(b => b.id).join(','),
+            inventario_total_kg: biomasaKg,
+            source_block_id: block.id,
             block_info: {
-              active_blocks_count: activeBlocks.length,
-              generaciones: activeBlocks.map(b => b.generacion?.codigo).join(',')
+              estanque_id: block.estanque_id,
+              poblacion: block.poblacion,
+              peso_promedio: block.peso_promedio,
+              densidad: block.densidad,
+              generacion_codigo: block.generacion?.codigo,
+              generacion_nombre: block.generacion?.nombre
             },
             snapshot_date: new Date().toISOString()
           });
@@ -383,7 +390,26 @@ export class InventorySnapshotGenerator {
       }
     }
 
+    console.log(`✅ Generated ${snapshots.length} snapshot records`);
     return snapshots;
+  }
+
+  private calculateHarvestDate(block: any): string {
+    // If the block has a harvest date specified, use it
+    if (block.fecha_cosecha) {
+      return block.fecha_cosecha;
+    }
+
+    // Otherwise, calculate based on start week and duration
+    const startDate = new Date();
+    // Assuming week numbers are relative to current year
+    const weekNumber = block.semana_inicio || 1;
+    const duration = block.duracion || 12;
+
+    // Calculate harvest date as start + duration weeks
+    startDate.setDate(startDate.getDate() + (weekNumber + duration - 1) * 7);
+
+    return startDate.toISOString().split('T')[0];
   }
 
   private calculatePesoPromedio(pesoFinal: number, semanasTranscurridas: number, cicloTotal: number): number {

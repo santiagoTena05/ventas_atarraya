@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useSnapshotManager } from '@/hooks/useSnapshotManager';
+import { useEstrategiaComercialData } from '@/hooks/useEstrategiaComercialData';
+import { usePlannerData } from '@/hooks/usePlannerData';
+import { usePlannerCrud } from '@/hooks/usePlannerCrud';
+import { useEstrategiaVersions } from '@/hooks/useEstrategiaVersions';
 
 export interface InventoryAvailability {
   fecha_semana: string;
@@ -29,146 +32,122 @@ export function useInventoryAvailability() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activePlan, setActivePlan] = useState<any>(null);
+  const [activeLocation, setActiveLocation] = useState<string>('');
+  const [selectedVersion, setSelectedVersion] = useState<any>(null);
 
-  // Load active plan first
+  // Load planner data
+  const { locationData, isLoading: plannerLoading } = usePlannerData();
+  const { planes, currentPlan, setCurrentPlan, loading: plannerCrudLoading } = usePlannerCrud();
+
+  // Auto-select first location and plan
   useEffect(() => {
-    const loadActivePlan = async () => {
-      try {
-        console.log('📋 Loading active plan for inventory...');
+    if (!plannerLoading && !plannerCrudLoading && !activePlan) {
+      // Auto-select first location
+      const firstLocation = Object.keys(locationData)[0];
+      if (firstLocation) {
+        setActiveLocation(firstLocation);
 
-        const { data: plans, error: plansError } = await supabase
-          .from('planner_planes')
-          .select('id, nombre, oficina_id')
-          .eq('activo', true)
-          .limit(1);
-
-        if (plansError) throw plansError;
-
-        if (plans && plans.length > 0) {
-          console.log('✅ Found active plan:', plans[0].nombre);
-          setActivePlan(plans[0]);
-        } else {
-          console.log('❌ No active plans found');
+        // Auto-select first plan for that location
+        const locationInfo = locationData[firstLocation];
+        const availablePlans = planes.filter(plan => plan.oficina_id === locationInfo.id);
+        if (availablePlans.length > 0) {
+          const firstPlan = availablePlans[0];
+          setActivePlan(firstPlan);
+          setCurrentPlan(firstPlan);
         }
-      } catch (err) {
-        console.error('Error loading active plan:', err);
-        setError(err instanceof Error ? err.message : 'Error loading active plan');
       }
-    };
-
-    loadActivePlan();
-  }, []);
-
-  // Use snapshot manager for the active plan
-  const snapshotManager = useSnapshotManager(activePlan?.id);
-
-  // Load inventory data from snapshots
-  useEffect(() => {
-    if (!activePlan) {
-      return;
     }
+  }, [locationData, planes, plannerLoading, plannerCrudLoading, activePlan, setCurrentPlan]);
 
-    const loadInventoryData = async () => {
+  // Get latest version for the active plan
+  const { versions, loading: versionsLoading } = useEstrategiaVersions(activePlan?.id);
+
+  // Auto-select latest version
+  useEffect(() => {
+    if (versions && versions.length > 0 && !selectedVersion) {
+      // Get the latest version by creation date
+      const latestVersion = versions.sort((a, b) =>
+        new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime()
+      )[0];
+      setSelectedVersion(latestVersion);
+    }
+  }, [versions, selectedVersion]);
+
+  // Get location data for the active plan
+  const selectedLocationData = activeLocation ? locationData[activeLocation] : null;
+  const selectedLocationId = selectedLocationData?.id;
+
+  // Use estrategia comercial data directly
+  const estrategiaData = useEstrategiaComercialData(
+    activePlan?.id,
+    selectedLocationData,
+    selectedLocationId,
+    selectedVersion?.id
+  );
+
+  // Convert estrategia comercial data to inventory availability format
+  useEffect(() => {
+    if (estrategiaData.proyeccionesInventario.length > 0 && !estrategiaData.isLoading) {
       setLoading(true);
-      setError(null);
 
       try {
-        console.log('📊 Loading inventory from snapshots for plan:', activePlan.nombre);
+        console.log('📊 Converting estrategia comercial data to inventory format...');
 
-        // Get projected inventory snapshots
-        const { data: snapshots, error: snapshotsError } = await supabase
-          .from('projected_inventory_snapshots')
-          .select('*')
-          .eq('plan_id', activePlan.id)
-          .gte('fecha_semana', new Date().toISOString().split('T')[0]) // Only future weeks
-          .order('fecha_semana', { ascending: true });
+        const inventory: InventoryAvailability[] = estrategiaData.proyeccionesInventario.map(proyeccion => {
+          // Get global registered sales for this week/talla
+          const { totalKg: globalSales } = estrategiaData.getGlobalRegisteredSalesForCell(
+            proyeccion.semana,
+            proyeccion.talla
+          );
 
-        if (snapshotsError) throw snapshotsError;
+          // Get current version sales for this week/talla
+          const currentVersionSales = estrategiaData.getTotalVentasForCell(
+            proyeccion.semana,
+            proyeccion.talla
+          );
 
-        console.log('📈 Found snapshots:', snapshots?.length || 0);
+          return {
+            fecha_semana: proyeccion.semana,
+            talla_comercial: proyeccion.talla,
+            inventario_base: proyeccion.inventario_neto,
+            ventas_registradas: globalSales + currentVersionSales,
+            inventario_disponible: Math.max(0, proyeccion.inventario_neto - globalSales - currentVersionSales),
+            plan_id: activePlan?.id || '',
+            plan_nombre: activePlan?.nombre || ''
+          };
+        });
 
-        if (!snapshots || snapshots.length === 0) {
-          console.log('⚠️ No snapshots found, triggering generation...');
-
-          if (snapshotManager.isReady) {
-            await snapshotManager.generateSnapshots(false);
-
-            // Reload snapshots after generation
-            const { data: newSnapshots, error: newSnapshotsError } = await supabase
-              .from('projected_inventory_snapshots')
-              .select('*')
-              .eq('plan_id', activePlan.id)
-              .gte('fecha_semana', new Date().toISOString().split('T')[0])
-              .order('fecha_semana', { ascending: true });
-
-            if (newSnapshotsError) throw newSnapshotsError;
-
-            console.log('✅ Generated snapshots:', newSnapshots?.length || 0);
-            processSnapshots(newSnapshots || []);
-          } else {
-            setInventoryData([]);
-          }
-        } else {
-          processSnapshots(snapshots);
-        }
+        console.log('✅ Converted inventory data:', inventory.length, 'entries');
+        setInventoryData(inventory);
+        setError(null);
 
       } catch (err) {
-        console.error('Error loading inventory:', err);
-        setError(err instanceof Error ? err.message : 'Error loading inventory');
+        console.error('Error processing estrategia comercial data:', err);
+        setError(err instanceof Error ? err.message : 'Error processing inventory');
         setInventoryData([]);
       } finally {
         setLoading(false);
       }
-    };
+    } else if (estrategiaData.error) {
+      setError(estrategiaData.error);
+      setInventoryData([]);
+      setLoading(false);
+    } else {
+      setLoading(estrategiaData.isLoading || plannerLoading || plannerCrudLoading || versionsLoading);
+    }
+  }, [
+    estrategiaData.proyeccionesInventario,
+    estrategiaData.isLoading,
+    estrategiaData.error,
+    estrategiaData.getGlobalRegisteredSalesForCell,
+    estrategiaData.getTotalVentasForCell,
+    activePlan?.id,
+    activePlan?.nombre,
+    plannerLoading,
+    plannerCrudLoading,
+    versionsLoading
+  ]);
 
-    const processSnapshots = (snapshots: any[]) => {
-      // Get current registered sales to calculate available inventory
-      const loadSalesAndProcess = async () => {
-        try {
-          // Get registered orders/sales that reduce inventory
-          const { data: orders } = await supabase
-            .from('pedidos')
-            .select('fecha_entrega, talla_comercial, cantidad, estado')
-            .eq('plan_id', activePlan.id)
-            .in('estado', ['confirmado', 'en_preparacion', 'enviado']);
-
-          // Group sales by week and size
-          const salesByWeekSize: { [key: string]: number } = {};
-          orders?.forEach(order => {
-            const key = `${order.fecha_entrega}_${order.talla_comercial}`;
-            salesByWeekSize[key] = (salesByWeekSize[key] || 0) + order.cantidad;
-          });
-
-          // Convert snapshots to inventory availability format
-          const inventory: InventoryAvailability[] = snapshots.map(snapshot => {
-            const salesKey = `${snapshot.fecha_semana}_${snapshot.talla_comercial}`;
-            const salesRegistered = salesByWeekSize[salesKey] || 0;
-
-            return {
-              fecha_semana: snapshot.fecha_semana,
-              talla_comercial: snapshot.talla_comercial,
-              inventario_base: snapshot.inventario_total_kg,
-              ventas_registradas: salesRegistered,
-              inventario_disponible: Math.max(0, snapshot.inventario_total_kg - salesRegistered),
-              plan_id: activePlan.id,
-              plan_nombre: activePlan.nombre
-            };
-          });
-
-          console.log('✅ Processed inventory data:', inventory.length, 'entries');
-          setInventoryData(inventory);
-
-        } catch (err) {
-          console.error('Error processing snapshots:', err);
-          setError(err instanceof Error ? err.message : 'Error processing inventory');
-        }
-      };
-
-      loadSalesAndProcess();
-    };
-
-    loadInventoryData();
-  }, [activePlan?.id, snapshotManager.isReady]); // Depend on snapshot manager readiness
 
   // Get availability for specific size and week
   const getAvailabilityForWeekAndSize = useCallback((fecha_semana: string, talla: string): number => {
@@ -240,11 +219,14 @@ export function useInventoryAvailability() {
 
   return {
     inventoryData,
-    loading: loading || snapshotManager.state.isGenerating || false,
-    error: error || snapshotManager.state.error || null,
+    loading,
+    error,
     getAvailabilityForWeekAndSize,
     getWeeklySummary,
     validateOrderAvailability,
-    snapshotManager // Expose for debugging/admin purposes
+    // Expose plan and version info for debugging
+    activePlan,
+    selectedVersion,
+    estrategiaData // Expose estrategia data for advanced usage
   };
 }

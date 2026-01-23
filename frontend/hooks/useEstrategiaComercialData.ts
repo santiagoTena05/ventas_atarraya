@@ -279,14 +279,75 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
   // Crear/actualizar cosecha asignada
   const saveCosechaAsignada = useCallback(async (cosecha: Omit<CosechaAsignada, 'id'>) => {
     try {
+      const cosechasToCreate = [];
+
+      // Siempre crear la cosecha inicial
+      const cosechaInicial = {
+        ...cosecha,
+        plan_id: planId,
+        version_id: versionId,
+        is_registered: false
+      };
+      cosechasToCreate.push(cosechaInicial);
+
+      // Si es recurrente, crear cosechas para las próximas semanas
+      if (cosecha.recurrente) {
+        const fechaBase = new Date(cosecha.fecha);
+        const SEMANAS_RECURRENTES = 12; // Crear para las próximas 12 semanas
+
+        for (let i = 1; i <= SEMANAS_RECURRENTES; i++) {
+          const nuevaFecha = new Date(fechaBase);
+          nuevaFecha.setDate(nuevaFecha.getDate() + (i * 7)); // Agregar semanas
+
+          const cosechaRecurrente = {
+            ...cosecha,
+            fecha: nuevaFecha.toISOString().split('T')[0], // Formato YYYY-MM-DD
+            plan_id: planId,
+            version_id: versionId,
+            is_registered: false,
+            recurrente: false // Las cosechas generadas no son recurrentes ellas mismas
+          };
+          cosechasToCreate.push(cosechaRecurrente);
+        }
+      }
+
+      // Insertar todas las cosechas de una vez
       const { data, error } = await supabase
         .from('estrategia_comercial_cosechas')
-        .insert([{
+        .insert(cosechasToCreate)
+        .select(`
+          *,
+          cliente:clientes(id, nombre, oficina, telefono, email)
+        `);
+
+      if (error) {
+        throw new Error('Error guardando cosecha: ' + error.message);
+      }
+
+      // Actualizar el estado local con todas las nuevas cosechas
+      setCosechasAsignadas(prev => [...prev, ...data]);
+
+      console.log(`✅ Cosecha${cosecha.recurrente ? 's recurrentes' : ''} creada${cosecha.recurrente ? 's' : ''}: ${data.length} registro${data.length > 1 ? 's' : ''}`);
+
+      return data[0]; // Retornar la primera cosecha (la inicial)
+    } catch (error) {
+      console.error('Error guardando cosecha:', error);
+      throw error;
+    }
+  }, [planId, versionId]);
+
+  // Actualizar cosecha asignada existente
+  const updateCosechaAsignada = useCallback(async (id: string, cosecha: Omit<CosechaAsignada, 'id'>) => {
+    try {
+      const { data, error } = await supabase
+        .from('estrategia_comercial_cosechas')
+        .update({
           ...cosecha,
           plan_id: planId,
           version_id: versionId,
           is_registered: false
-        }])
+        })
+        .eq('id', id)
         .select(`
           *,
           cliente:clientes(id, nombre, oficina, telefono, email)
@@ -294,13 +355,13 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
         .single();
 
       if (error) {
-        throw new Error('Error guardando cosecha');
+        throw new Error('Error actualizando cosecha');
       }
 
-      setCosechasAsignadas(prev => [...prev, data]);
+      setCosechasAsignadas(prev => prev.map(c => c.id === id ? data : c));
       return data;
     } catch (error) {
-      console.error('Error guardando cosecha:', error);
+      console.error('Error actualizando cosecha:', error);
       throw error;
     }
   }, [planId, versionId]);
@@ -349,18 +410,28 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
     return { totalKg, sales: globalSales };
   }, [registeredSalesGlobal]);
 
-  // Obtener inventario disponible real (descontando ventas registradas globalmente)
+  // Obtener inventario disponible real (descontando ventas registradas globalmente + ventas de versión actual)
   const getAvailableInventoryForCell = useCallback((fecha: string, talla: string) => {
     const proyeccion = getProyeccionForCell(fecha, talla);
     if (!proyeccion) return 0;
 
-    // Calculate accumulated global sales up to this week (propagation)
+    // Use the recalculated inventory that already accounts for current version sales
+    if (proyeccion.inventario_neto_real !== undefined) {
+      return proyeccion.inventario_neto_real;
+    }
+
+    // Fallback: Calculate accumulated global sales up to this week (propagation)
     const accumulatedGlobalSales = registeredSalesGlobal
       .filter(sale => sale.fecha_semana <= fecha && sale.talla_comercial === talla)
       .reduce((total, sale) => total + sale.cantidad_kg, 0);
 
-    return Math.max(0, proyeccion.inventario_neto - accumulatedGlobalSales);
-  }, [getProyeccionForCell, registeredSalesGlobal]);
+    // Calculate accumulated current version sales up to this week
+    const accumulatedCurrentSales = cosechasAsignadas
+      .filter(cosecha => cosecha.fecha <= fecha && cosecha.talla === talla)
+      .reduce((total, cosecha) => total + cosecha.cantidad_kg, 0);
+
+    return Math.max(0, proyeccion.inventario_neto - accumulatedGlobalSales - accumulatedCurrentSales);
+  }, [getProyeccionForCell, registeredSalesGlobal, cosechasAsignadas]);
 
   // Determinar color de celda según lógica de estrategia comercial
   const getCellColor = useCallback((fecha: string, talla: string): 'blue' | 'yellow' | 'red' => {
@@ -424,6 +495,8 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
 
   // Efecto para recalcular proyecciones cuando cambian las cosechas
   const recalculateProyecciones = useCallback(() => {
+    console.log('🔄 Recalculating proyecciones with cosechas:', cosechasAsignadas.length);
+
     setProyeccionesInventario(prev =>
       prev.map(proyeccion => {
         // TEMPORARY: Week propagation logic for presentation
@@ -439,6 +512,19 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
           .filter(cosecha => cosecha.fecha <= proyeccion.semana && cosecha.talla === proyeccion.talla)
           .reduce((total, cosecha) => total + cosecha.cantidad_kg, 0);
 
+        // Debug logging for any case with inventory
+        if (proyeccion.inventario_neto > 0) {
+          const matchingSales = cosechasAsignadas.filter(cosecha => cosecha.fecha <= proyeccion.semana && cosecha.talla === proyeccion.talla);
+
+          console.log(`🔍 Debug ${proyeccion.semana} ${proyeccion.talla}:`, {
+            inventario_original: proyeccion.inventario_neto,
+            ventas_acumuladas: ventasAcumuladasDeSemanasPrevias,
+            matching_sales: matchingSales.length,
+            sales_data: matchingSales.map(s => ({ fecha: s.fecha, talla: s.talla, cantidad: s.cantidad_kg })),
+            final_inventory: Math.max(0, proyeccion.inventario_neto - ventasAcumuladasDeSemanasPrevias)
+          });
+        }
+
         // Calculate net available inventory after subtracting all previous sales
         const inventarioNetoDisponible = Math.max(0, proyeccion.inventario_neto - ventasAcumuladasDeSemanasPrevias);
 
@@ -448,7 +534,6 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
         const cosechaRecomendada = inventarioNetoDisponible > HARVEST_THRESHOLD
           ? inventarioNetoDisponible - HARVEST_TARGET
           : 0;
-
 
         return {
           ...proyeccion,
@@ -487,6 +572,7 @@ export function useEstrategiaComercialData(planId?: string, selectedLocation?: a
     isLoading,
     error,
     saveCosechaAsignada,
+    updateCosechaAsignada,
     deleteCosechaAsignada,
     getCosechasForCell,
     getProyeccionForCell,

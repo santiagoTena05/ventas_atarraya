@@ -145,15 +145,18 @@ export function PedidoForm({ onSubmit, onCancel }: PedidoFormProps) {
       if (!confirmed) return;
     }
 
-    // Submit the order data - this will register it like a harvest in Estrategia Comercial
+    // Submit the order data with new integrated fields
     onSubmit({
       cliente: formData.cliente,
       tipo_cliente: formData.tipo_cliente,
       producto: formData.producto,
-      fecha_semana: formData.selectedInventory.fecha_semana,
-      talla_comercial: formData.selectedInventory.talla_comercial,
-      cantidad: formData.cantidad,
+      talla: formData.selectedInventory.talla_comercial, // Legacy field
+      talla_comercial: formData.selectedInventory.talla_comercial, // New field
+      cantidad_estimada: formData.cantidad,
+      fecha_estimada_entrega: formData.selectedInventory.fecha_semana,
+      fecha_semana: formData.selectedInventory.fecha_semana, // New field for integration
       notas: formData.notas,
+      estatus: 'Pendiente' as const
     });
   };
 

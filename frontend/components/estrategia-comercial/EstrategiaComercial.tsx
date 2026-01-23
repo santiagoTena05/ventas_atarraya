@@ -41,6 +41,7 @@ export function EstrategiaComercial({}: EstrategiaComercialProps) {
     isLoading,
     error,
     saveCosechaAsignada,
+    updateCosechaAsignada,
     deleteCosechaAsignada,
     getCosechasForCell,
     getProyeccionForCell,
@@ -88,6 +89,15 @@ export function EstrategiaComercial({}: EstrategiaComercialProps) {
       setSelectedCell(null);
     } catch (error) {
       console.error('Error guardando cosecha:', error);
+    }
+  };
+
+  // Manejar actualización de cosecha
+  const handleUpdateCosecha = async (cosechaId: string, cosecha: Omit<CosechaAsignada, 'id'>) => {
+    try {
+      await updateCosechaAsignada(cosechaId, cosecha);
+    } catch (error) {
+      console.error('Error actualizando cosecha:', error);
     }
   };
 
@@ -310,6 +320,7 @@ export function EstrategiaComercial({}: EstrategiaComercialProps) {
         cosechasExistentes={selectedCell ? getCosechasForCell(selectedCell.fecha, selectedCell.talla) : []}
         proyeccionInventario={selectedCell ? getProyeccionForCell(selectedCell.fecha, selectedCell.talla) : undefined}
         onSave={handleSaveCosecha}
+        onUpdate={handleUpdateCosecha}
         onDelete={handleDeleteCosecha}
         versionId={selectedVersion?.id}
         onRefresh={() => {

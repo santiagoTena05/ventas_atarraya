@@ -77,18 +77,30 @@ export function Navigation() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button
-              variant={pathname === '/pedidos' ? 'default' : 'outline'}
-              className={`flex items-center gap-2 ${
-                pathname === '/pedidos'
-                  ? 'bg-gray-900 text-white'
-                  : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
-              onClick={() => router.push('/pedidos')}
-            >
-              <ShoppingCart className="h-4 w-4" />
-              Pedidos
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant={(pathname.startsWith('/pedidos')) ? 'default' : 'outline'}
+                  className={`flex items-center gap-2 ${
+                    (pathname.startsWith('/pedidos'))
+                      ? 'bg-gray-900 text-white'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Pedidos
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => router.push('/pedidos')}>
+                  Gestión de Pedidos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/pedidos/confirmacion-ventas')}>
+                  Confirmación de Ventas
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

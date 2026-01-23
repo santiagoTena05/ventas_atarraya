@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, Package } from "lucide-react";
+import { PlusIcon, PencilIcon, TrashIcon, SearchIcon, Package, CheckCircle, XCircle } from "lucide-react";
 import { PedidoForm } from "@/components/forms/PedidoForm";
 import { usePedidos, type Pedido } from "@/lib/hooks/usePedidos";
 import { useInventoryAvailability } from "@/lib/hooks/useInventoryAvailability";
 
 export function PedidosView() {
-  const { pedidos, loading, addPedido, updatePedido, deletePedido } = usePedidos();
+  const { pedidos, loading, addPedido, updatePedido, deletePedido, confirmPedido, cancelPedido } = usePedidos();
   const { getWeeklySummary, loading: inventoryLoading } = useInventoryAvailability();
   const [showForm, setShowForm] = useState(false);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
@@ -51,16 +51,32 @@ export function PedidosView() {
     setEditingPedido(null);
   };
 
+  const handleConfirmPedido = async (id: number) => {
+    if (confirm("¿Confirmar este pedido? Esto reducirá automáticamente el inventario disponible.")) {
+      await confirmPedido(id);
+    }
+  };
+
+  const handleCancelPedido = async (id: number) => {
+    if (confirm("¿Cancelar este pedido confirmado? Esto restaurará el inventario.")) {
+      await cancelPedido(id);
+    }
+  };
+
   const getEstatusColor = (estatus: string) => {
     switch (estatus) {
       case "Pendiente":
         return "bg-yellow-100 text-yellow-800";
+      case "Confirmado":
+        return "bg-green-100 text-green-800";
       case "En Proceso":
         return "bg-blue-100 text-blue-800";
       case "Lista para Entrega":
-        return "bg-green-100 text-green-800";
+        return "bg-purple-100 text-purple-800";
       case "Completado":
         return "bg-gray-100 text-gray-800";
+      case "Cancelado":
+        return "bg-red-100 text-red-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -118,13 +134,21 @@ export function PedidosView() {
       </div>
 
       {/* Estadísticas rápidas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-teal-600">
+            <div className="text-2xl font-bold text-yellow-600">
               {pedidos.filter(p => p.estatus === "Pendiente").length}
             </div>
             <div className="text-sm text-gray-600">Pendientes</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-2xl font-bold text-green-600">
+              {pedidos.filter(p => p.estatus === "Confirmado").length}
+            </div>
+            <div className="text-sm text-gray-600">Confirmados</div>
           </CardContent>
         </Card>
         <Card>
@@ -137,7 +161,7 @@ export function PedidosView() {
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-purple-600">
               {pedidos.filter(p => p.estatus === "Lista para Entrega").length}
             </div>
             <div className="text-sm text-gray-600">Listos</div>
@@ -167,10 +191,10 @@ export function PedidosView() {
           ) : (
             <div className="space-y-3">
               <div className="text-sm text-blue-700 mb-3">
-                Inventario calculado desde Estrategia Comercial (descontando ventas registradas)
+                📊 Inventario Neto: Base proyectado - Ventas registradas (Estrategia Comercial + Pedidos confirmados)
               </div>
 
-              {getWeeklySummary().slice(0, 4).map((week) => (
+              {getWeeklySummary().slice(0, 6).map((week) => (
                 <div key={week.fecha_semana} className="bg-white rounded-lg p-3 border border-blue-200">
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-gray-900">
@@ -181,14 +205,19 @@ export function PedidosView() {
                     </Badge>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
                     {Object.entries(week.inventory_by_size)
                       .filter(([_, data]) => data.inventario_disponible > 0)
-                      .slice(0, 4)
+                      .sort(([tallaA], [tallaB]) => {
+                        // Sort by talla size descending (largest first)
+                        const getMaxSize = (talla: string) => parseInt(talla.split('-')[1] || '0');
+                        return getMaxSize(tallaB) - getMaxSize(tallaA);
+                      })
                       .map(([talla, data]) => (
-                      <div key={talla} className="text-center p-2 bg-gray-50 rounded">
-                        <div className="text-xs text-gray-600">{talla}</div>
-                        <div className="font-medium text-gray-900">{Math.round(data.inventario_disponible)}kg</div>
+                      <div key={talla} className="text-center p-2 bg-gray-50 rounded hover:bg-blue-50 cursor-pointer transition-colors">
+                        <div className="text-xs text-gray-600 font-medium">{talla}</div>
+                        <div className="font-bold text-blue-900">{Math.round(data.inventario_disponible)}kg</div>
+                        <div className="text-xs text-gray-500">Base: {Math.round(data.inventario_base)}</div>
                       </div>
                     ))}
                   </div>
@@ -201,8 +230,9 @@ export function PedidosView() {
                 </div>
               )}
 
-              <div className="text-xs text-gray-600 mt-2">
-                💡 Los pedidos creados aquí se compararán automáticamente con este inventario disponible
+              <div className="text-xs text-gray-600 mt-2 p-2 bg-blue-50 rounded">
+                💡 <strong>Inventario Integrado:</strong> Los pedidos confirmados reducen automáticamente este inventario,
+                manteniendo sincronización completa con la vista de Estrategia Comercial
               </div>
             </div>
           )}
@@ -252,19 +282,47 @@ export function PedidosView() {
                       </Badge>
                     </td>
                     <td className="p-4">
-                      <div className="flex justify-center gap-2">
+                      <div className="flex justify-center gap-1">
+                        {/* Actions based on status */}
+                        {pedido.estatus === "Pendiente" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleConfirmPedido(pedido.id)}
+                            className="text-green-600 hover:text-green-700"
+                            title="Confirmar pedido"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                          </Button>
+                        )}
+
+                        {pedido.estatus === "Confirmado" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCancelPedido(pedido.id)}
+                            className="text-orange-600 hover:text-orange-700"
+                            title="Cancelar pedido confirmado"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </Button>
+                        )}
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleEdit(pedido)}
+                          title="Editar pedido"
                         >
                           <PencilIcon className="w-4 h-4" />
                         </Button>
+
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleDelete(pedido.id)}
                           className="text-red-600 hover:text-red-700"
+                          title="Eliminar pedido"
                         >
                           <TrashIcon className="w-4 h-4" />
                         </Button>
@@ -280,8 +338,13 @@ export function PedidosView() {
 
       {/* Nota informativa */}
       <div className="text-sm text-blue-600 bg-blue-50 p-4 rounded-lg">
-        <span className="font-medium">Nota:</span> Los pedidos son órdenes que aún no se han convertido en ventas.
-        Úsalos para planificar cosechas y gestionar compromisos futuros con clientes.
+        <span className="font-medium">Sistema Integrado:</span>
+        <ul className="mt-2 space-y-1 list-disc list-inside text-xs">
+          <li><strong>Pendientes:</strong> Pedidos creados pero no confirmados</li>
+          <li><strong>Confirmados:</strong> Reducen automáticamente el inventario neto de Estrategia Comercial</li>
+          <li><strong>Cancelar Confirmado:</strong> Restaura automáticamente el inventario disponible</li>
+          <li><strong>Inventario:</strong> Sincronización completa con proyecciones de biomasa</li>
+        </ul>
       </div>
     </div>
   );
